@@ -1,0 +1,41 @@
+// 文本颜色系统
+$app-text-primary: #212121;   // 主内容（标题/正文）- 深灰提高对比度
+$app-text-secondary: #616161; // 次要内容（时间戳/标签）- 中灰保持层次
+$app-text-thirdly: #888;
+$app-text-disabled: #9E9E9E;  // 禁用状态文本 - 浅灰弱化视觉
+$app-text-hint: #757575;     // 提示文本 - 保持中等灰度
+$app-text-price: #bc4848;     // 价格文本 
+$app-text-success: #146017;		//成功文本
+
+// 核心功能色
+$app-primary: #007aff;       // 主色保持高饱和度蓝色
+$app-light-red: #FFB6C1; 	 // 浅红色
+$app-danger: #ff3d00;        // 警示色保持高饱和度红色
+$app-danger-dark: #ad4c4c;	 // 较暗的红色
+$app-success: #2ecc71;       // 成功色保持清新绿色
+$app-success-dark: #359b6d;
+
+// 背景与表面
+$app-background-black: #000;	// 全黑背景
+$app-background: #FFFFFF;     // 纯白背景提升亮度
+$app-background-blue: #6471BF; // 蓝紫色背景
+$app-background-blue-dark: #5e6bb3;
+$app-background-green-light: #a7e7b3; //浅绿色背景
+$app-surface: #F5F5F5;        // 卡片面板浅灰背景
+$app-surface-elevated: #FAFAFA; // 悬浮层更浅灰背景
+$app-overlay: rgba(0, 0, 0, 0.1); // 遮罩层透明度降低（10%）
+$app-scrim: rgba(0, 0, 0, 0.2); // 抽屉遮罩透明度调整（20%）
+
+// 扩展辅助色
+$app-divider: #c8c8c8;       // 分割线浅灰
+$app-icon-active: #007AFF;   // 激活状态图标
+$app-link: #0066CC;          // 链接蓝色（比主色稍暗）
+
+$font-size-xl: 44rpx;  // 超大标题  
+$font-size-lg: 36rpx;  // 大标题  
+$font-size-md: 28rpx;  // 正文/按钮文本  
+$font-size-sml: 26rpx;  // 稍大一点的辅助文本  
+$font-size-sm: 24rpx;  // 辅助文本  
+$font-size-xs: 20rpx;  // 微小文本  
+$font-size-xxs: 16rpx; 
+$font-size-count-time: 18rpx; 

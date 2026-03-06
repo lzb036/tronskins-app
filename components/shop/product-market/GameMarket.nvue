@@ -1,0 +1,216 @@
+<!-- 饰品市场 -->
+<template>
+	<view>
+		<sort-price-filter :asc="ascPrice" :isMarket="true" :market_name="market_name" :itemName="itemName" :tags="tags"
+			:appid="appid" @ascPrice="refresh($event,'asc')" @keywords="refresh($event,'keywords')"
+			@filterType="refresh($event,'type')"></sort-price-filter>
+		<waterfall-refresh :dataList="list" height="84" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<item-template :key="item.id" :item="item" width="355"></item-template>
+			</template>
+		</waterfall-refresh>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import WaterfallRefresh from '@/components/layout/waterfall-refresh.nvue';
+	import ItemTemplate from '@/components/game-item/ItemTemplate.nvue';
+	import SortPriceFilter from '@/components/layout/SortPriceFilter.nvue';
+
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		marketGameListApi
+	} from '@/api/modules/market.js';
+	import {
+		scanLogin
+	} from '@/services/user.js';
+
+	export default {
+		components: {
+			WaterfallRefresh,
+			ItemTemplate,
+			SortPriceFilter
+		},
+		props: {
+			market_name: {
+				type: String,
+				default: '',
+			},
+			itemName: {
+				type: String,
+				default: '',
+			},
+			tags: {
+				type: Object,
+				default: null,
+			}
+		},
+		data() {
+			return {
+				appid: getGameType(),
+				i18n: i18n,
+				list: [],
+				show: false,
+				ascPrice: false,
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				sortField: 'price', // 新增：默认按价格排序
+				sortAsc: false, // 新增：默认降序
+				currentFilter: {} // 新增：存储完整筛选参数
+			}
+		},
+		mounted() {
+			this.fetchMarketList();
+		},
+		methods: {
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async fetchMarketList() {
+				 uni.showLoading({
+				            title: 'Loading...',
+				            mask: true // 蒙层，防止交互
+				        });
+				try {
+					const rawField = this.tags?.field;
+					let field = 'price';
+					if (rawField === 'hot') {
+						field = 'hot';
+					} else {
+						field = 'price';
+					}
+					let asc = this.tags?.asc;
+					if (asc === undefined) {
+						asc = field === 'price' ? false : true;
+					}
+					const params = {
+						appId: this.appid,
+						page: this.pager.page,
+						pageSize: this.pager.pageSize,
+						asc: asc,
+						field: field,
+						itemName: this.itemName,
+						keywords: this.market_name,
+						maxPrice: this.tags?.priceMax ? Number(this.tags.priceMax) : undefined,
+						minPrice: this.tags?.priceMin ? Number(this.tags.priceMin) : undefined,
+					};
+					if(this.tags){
+						params.tags = this.tags;
+					}
+					const res = await marketGameListApi(params);
+					if (res.code === 0) {
+						this.list = this.pager.page === 1 ? res.datas.list : this.list.concat(res.datas.list);
+						 uni.hideLoading();
+					}
+				} catch (error) {
+					console.error(error);
+				}finally{
+					uni.hideLoading();
+				}
+			},
+			refresh(e, type) {
+				uni.$u.debounce(() => {
+					this.pager.page = 1;
+					this.list = [];
+
+					if (type === 'asc') {
+						this.ascPrice = e;
+						this.tags = {
+							...this.tags,
+							asc: e,
+							field: 'app.market.filter.price'
+						};
+					} else if (type === 'keywords') {
+						this.market_name = e;
+						this.itemName = '';
+					} else if (type === 'type') {
+						this.itemName = e.itemName;
+
+						const newTags = {
+							...e.tags
+						};
+						if (e.sortField) newTags.field = e.sortField;
+						if (e.sortAsc !== undefined) newTags.asc = e.sortAsc;
+
+						this.tags = newTags;
+					} else {
+						this.tags = {};
+						this.ascPrice = false;
+						this.itemName = '';
+						this.market_name = '';
+					}
+
+					this.fetchMarketList();
+				}, 500);
+			},
+			loadMore() {
+				this.pager.page++;
+				this.fetchMarketList();
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.search-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.filter-icon {
+		width: 46rpx;
+		height: 40rpx;
+	}
+
+	.search-bar {
+		width: 660rpx;
+		height: 62rpx;
+		display: flex;
+		flex-direction: row;
+		border-radius: 3rpx;
+		align-items: center;
+		justify-content: center;
+		background: $app-surface;
+		padding: 10rpx;
+		margin: 20rpx 14rpx 20rpx 0;
+		position: relative;
+
+		.scan-box {
+			width: 70rpx;
+			height: 62rpx;
+			position: absolute;
+			right: 0rpx;
+			top: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 10rpx 15rpx;
+		}
+
+		.scan-icon {
+			position: absolute;
+			left: 20rpx;
+		}
+
+		.label {
+			color: $app-text-thirdly;
+			font-size: $font-size-sm;
+			padding-top: 2rpx;
+			position: absolute;
+			left: 70rpx;
+		}
+	}
+</style>

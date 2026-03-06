@@ -1,0 +1,158 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.steam.account.unbind_title')" :autoBack="true" leftIconColor="#fff" :titleStyle="{color:'#fff'}"
+			bgColor="#171a21" placeholder></u-navbar>
+		<view class="container">
+			<text class="text">1.{{ i18n.t('app.steam.message.load_error') }}</text>
+			<view class="btn-wrap">
+				<text class="text">2.{{ i18n.t('app.steam.message.load_error_2') }}</text>
+				<button class="refresh-btn" @click="reload()" type="primary"
+					size="mini">{{ i18n.t('app.common.refresh') }}</button>
+			</view>
+		</view>
+	</view>
+</template>
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import {
+		getServerCookie
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		getTemporaryTokenApi,
+	} from '@/api/modules/steam.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				web: null,
+				token: '',
+				src: '',
+				page: null,
+				errorInfo: {},
+				// isNotUser: false,
+				systemInfo: {}
+			}
+		},
+		async onBackPress(options) {
+			if (this.web) {
+				this.src = null;
+				await this.close();
+				await uni.redirectTo({
+					url: '/pages/user/steam/steam-setting'
+				});
+				return true;
+			}
+		},
+		created() {
+			this.createWeb();
+		},
+		methods: {
+			async createWeb() {
+				const res = await getTemporaryTokenApi();
+				this.token = res.datas;
+				this.systemInfo = uni.getSystemInfoSync();
+				this.src = getServerCookie() + "api/public/steam/auth/unbind/validate?token=" + this.token;
+				this.page = this.$scope.$getAppWebview();
+				this.web = plus.webview.create('', 'WKWebview', {
+					plusrequire: 'none',
+					kernel: 'WKWebview',
+					'uni-app': 'none',
+					top: this.systemInfo.statusBarHeight + 108 + 'px',
+					height: this.systemInfo.windowHeight + 'px',
+					progress: {
+						color: '#74bcff'
+					}
+				});
+				this.web.loadURL(this.src);
+				// let steamInfo = await getSteamInfo(true);
+				// if (steamInfo&&!steamInfo.status) {
+				// 	this.isNotUser = true;
+				// }
+
+				// 处理解绑成功之后
+				this.web.addEventListener('loaded', (e) => {
+					let url = e.target.getURL();
+					// if(this.isNotUser){
+					// 	this.web.evalJS('javascript:Logout();');
+					// }
+					this.web.evalJS(`
+						window.onload = (function(){
+							let preElements = document.getElementsByTagName('pre');
+							console.log(window.location.href)
+							let errorInfo;
+							if(preElements && preElements.length == 1){
+								let content = preElements[0].textContent ? preElements[0].textContent : preElements[0].innerText;
+								errorInfo = JSON.parse(content);
+								preElements[0].textContent = errorInfo.message;
+								if(errorInfo && errorInfo.message){
+									setTimeout(()=>{
+										window.alert(errorInfo.message);
+									}, 1000);
+								}
+							}
+						})()
+					`)
+					if (url.includes('/user-center/index.html')) {
+						uni.$emit('steam-operations');
+						this.close();
+						setTimeout(()=>{
+							uni.redirectTo({
+								url: '/pages/user/steam/steam-setting'
+							})
+						},1000);
+					}
+				});
+
+				this.page.append(this.web);
+				this.web.show();
+			},
+			close() {
+				if(this.web){
+					this.web.close();
+					this.web = null; // 清理引用，防止内存泄漏
+				}
+			},
+			reload() {
+				this.close();
+				this.createWeb();
+			}
+		}
+	}
+</script>
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	
+	.container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		padding: 20rpx 30rpx;
+
+		.text {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+
+		.btn-wrap {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+			margin-top: 20rpx;
+		}
+
+		.refresh-btn {
+			width: 120rpx;
+			height: 40rpx;
+			font-size: $font-size-xs;
+			margin-left: 20rpx;
+			border-radius: 0;
+			background: $app-icon-active;
+			border: 1rpx solid $app-icon-active;
+		}
+	}
+</style>

@@ -1,0 +1,361 @@
+<template>
+	<view class="sale-item">
+		<view @click="routeItem()">
+			<BaseItem :item="item" :schema="schema" :width="156"></BaseItem>
+		</view>
+		<view class="sale-center">
+			<text class="market-name">{{schema.market_name}}</text>
+			<view class="sale-price">
+				<text class="price-label">$</text>
+				<text class="price-value">{{item.price}}</text>
+			</view>
+		</view>
+		<view class="sale-right">
+			<u-button v-if="!isOwner()" class="buy-btn" size="mini" color="#4674c9" :text="i18n.t('app.trade.buy.text')"
+				@click="showBuyModal()"></u-button>
+			<text v-if="isOwner()" class="change-btn" :style="getFontStyle()"
+				@click="changePriceSubmit(item)">{{i18n.t('app.inventory.price_change')}}</text>
+			<u-button v-if="isOwner()" class="buy-btn" size="mini" color="#ad4c4c"
+				:text="i18n.t('app.inventory.delist')" @click="delist(item)"></u-button>
+		</view>
+		<view class="sale-bottom">
+			<view v-if="item.paint_wear">
+				<text class="item-wear-text">{{i18n.t('app.market.csgo.abradability')}}:{{item.paint_wear}}</text>
+				<wear-progress-bar v-if="item.paint_wear" :paintWear="item.paint_wear" :width="350"></wear-progress-bar>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import BaseItem from '@/components/game-item/index.nvue';
+	import PayModel from '@/components/shop/sale-manage/PayModel.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import {
+		getGameFile,
+		confirmPay
+	} from '@/utils/order/productUtils.js'
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		OrderItemPurchaseApi,
+		OrderItemRemovedApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		getLanguage
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		props: ['uuid', 'item', 'schema', 'stickerMap'],
+		components: {
+			BaseItem,
+			WearProgressBar,
+			PayModel,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				sell_id: null,
+				show: false,
+				currLan: getLanguage()
+			}
+		},
+		methods: {
+			routeItem() {
+						  if (!this.item?.app_id) return;
+						
+						  const stickerMap = this.$parent.stickerSchemas || {}; // 父级列表页已拉好
+						  const stickers = (this.item.stickers || []).map(id => stickerMap[id]).filter(Boolean);
+						  const keychains = (this.item.keychains || []).map(id => stickerMap[id]).filter(Boolean);
+						  const asset = { ...this.item, stickers, keychains,userId: this.uuid ,Own:this.isOwner(), };
+						  const schemas = { [this.item.schema_id]: this.schema };
+						  const users = { [this.uuid]: getAppUserInfo() };
+						  const params = {
+						    schemas: encodeURIComponent(JSON.stringify(schemas)),
+						    asset: encodeURIComponent(JSON.stringify(asset)),
+						    user: encodeURIComponent(JSON.stringify(users)),
+							sell_id:this.item.sell_id,
+							uuid:this.uuid,
+						  };
+						  uni.$u.route(
+						    `/pages/product-market/${getGameFile(this.item.app_id)}/product-detail`,
+						    params
+						  );
+						},
+			isOwner() {
+			  const userInfo = getAppUserInfo();
+			  if (!userInfo || !userInfo.shop) return false;
+			  return this.uuid === userInfo.shop.uuid;
+			},
+			/**
+			 * 购买
+			 * @param {Object} item
+			 */
+			async showBuyModal() {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+
+				const payText = this.i18n.t("app.trade.buy.pay_text_2");
+				const payText2 = this.i18n.t("app.trade.buy.pay_text_3");
+				const totalAmount = `$ ${this.item.price}`;
+				const floorAmount = Math.floor(this.item.price);
+				const content = `${payText} ${floorAmount}\n${payText2} \n`;
+				const payRes = await confirmPay(totalAmount, content);
+				if (payRes) {
+					this.buySubmit();
+				}
+			},
+			async buySubmit() {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+				try {
+					uni.showLoading({
+						title: this.i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					let params = {
+						id: this.item.sell_id,
+						price: this.item.price,
+						appid: this.item.app_id,
+					}
+					const res = await OrderItemPurchaseApi(params);
+					uni.hideLoading();
+					if (res.datas.includes('Steam issue') || res.datas.includes('Inventory privacy')) {
+						let msg = this.i18n.t('app.inventory.message.privacy') + getAppUserInfo().config.nickname
+						uni.showModal({
+							content: res.datas.includes('Steam issue') ? this.i18n.t(
+								'app.steam.message.trading_restrictions') : msg,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+
+						})
+						return
+					}
+
+
+					if (res.code == 0) {
+						uni.$u.toast(i18n.t('app.trade.buy.message.success'));
+						this.$emit('reload');
+						return;
+					}
+
+				} catch (error) {
+					uni.hideLoading();
+					console.log(error)
+					//TODO handle the exception
+				}
+			},
+			/**
+			 * 改价饰品
+			 */
+			changePriceSubmit(item) {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+				item.id = item.sell_id;
+				let items = [];
+				items.push(item)
+				let schemas = {};
+				schemas[item.schema_id] = this.schema;
+				uni.$u.route({
+					url: '/pages/shop/order-manage/change-price',
+					params: {
+						list: encodeURIComponent(JSON.stringify(items)),
+						schemas: encodeURIComponent(JSON.stringify(schemas)),
+						mode: 'sell'
+					}
+				})
+			},
+			/**
+			 * 下架
+			 */
+			delist(item) {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+				uni.showModal({
+					title: this.i18n.t('app.system.tips.title'),
+					content: this.i18n.t('app.inventory.message.confirm_delist'),
+					confirmText: this.i18n.t('app.common.confirm'),
+					cancelText: this.i18n.t('app.common.cancel'),
+					success: (res) => {
+						if (res.confirm) {
+							this.sell_id = item.sell_id;
+							this.delistSubmit();
+						}
+					}
+				});
+			},
+			async delistSubmit() {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+				try {
+					const ids = [];
+					ids.push(this.sell_id)
+					const res = await OrderItemRemovedApi({
+						ids: ids
+					});
+					console.log(res);
+					uni.showLoading({
+						title: this.i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					uni.hideLoading();
+					if (res.code == 0) {
+						this.$emit('reload')
+						uni.$u.toast(res.datas);
+					} else {
+						uni.$u.toast(res.datas);
+					}
+				} catch (error) {
+					uni.hideLoading();
+					console.log(error)
+					//TODO handle the exception
+				}
+			},
+			getFontStyle() {
+				if (this.currLan === "zh_CN") {
+					return {
+						width: '90rpx',
+						fontSize: '22rpx'
+					}
+				}
+				return {
+					width: '120rpx',
+					fontSize: '20rpx'
+				}
+			},
+		}
+	}
+</script>
+
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.sale-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+	}
+
+	.sale-bottom {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding-top: 10rpx;
+		padding-left: 10rpx;
+
+		.item-wear-text {
+			font-size: $font-size-xs;
+			color: $app-text-thirdly;
+			lines: 1;
+			text-overflow: ellipsis;
+			padding-bottom: 5rpx;
+		}
+	}
+
+	.sale-center {
+		width: 314rpx;
+		display: flex;
+		flex-direction: column;
+		padding-left: 20rpx;
+
+		.market-name {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			lines: 1;
+			text-overflow: ellipsis;
+			padding-bottom: 20rpx;
+		}
+	}
+
+	.sale-right {
+		width: 220rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: flex-end;
+		align-items: flex-end;
+
+		.buy-btn {
+			width: 90rpx;
+			height: 50rpx;
+			margin-left: 5rpx;
+		}
+
+		.change-btn {
+			height: 50rpx;
+			margin-right: 5rpx;
+			text-align: center;
+			border-radius: 5rpx;
+			background: #4674c9;
+			color: #fff;
+			padding: 12rpx 0;
+		}
+	}
+
+	.sale-price {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 5rpx;
+
+		.price-label {
+			font-size: $font-size-sm;
+			color: $app-text-price;
+			margin-right: 6rpx;
+			font-weight: bold;
+		}
+
+		.price-value {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			font-weight: 300;
+			margin-right: 10rpx;
+			font-weight: bold;
+		}
+	}
+
+	.sale-shop {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+
+		.user-img {
+			width: 36rpx;
+			height: 36rpx;
+			border-radius: 50rpx;
+		}
+
+		.user-name {
+			font-size: $font-size-sm;
+			height: 30rpx;
+			text-align: left;
+			color: $app-text-primary;
+			padding-top: 3rpx;
+			padding-left: 10rpx;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+	}
+</style>

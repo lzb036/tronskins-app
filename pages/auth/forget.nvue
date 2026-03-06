@@ -1,0 +1,173 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.login.reset_password')" :autoBack="true" placeholder></u-navbar>
+		<view class="container">
+			<input v-model="email" class="input" type="text" :placeholder="i18n.t('app.user.login.email_placeholder')"></input>
+			<view class="code-box">
+				<input :maxlength="6" v-model="code" class="input" type="text"
+					:placeholder="i18n.t('app.user.login.enter_captcha')"></input>
+				<text :class="!isDisable?'reget-code':'reget-code disabled'"
+					@click="sendEmailCodeSubmit">{{ !isDisable?tips: i18n.t('app.user.login.reacquire')+'('+tips+')' }}</text>
+				<u-code ref="resetCode" @change="codeChange" @end="handleEnd" seconds="300" changeText="x"
+					unique-key="reset"></u-code>
+			</view>
+			<u-button class="submit-btn" shape="circle" :custom-style="buttonStyle" type="primary"
+				@click="resetPwdSubmit()" :text="i18n.t('app.user.login.reset_password')">
+			</u-button>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import {
+		getcheckEmailApi,
+		userResetPasswordApi,
+		EmailCodeSubmitApi,
+		SendEmailCodeApi
+	} from '@/api/modules/login/auth.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				email: '',
+				code: '',
+				isDisable: false,
+				tips: i18n.t('app.user.login.reacquire'),
+				buttonStyle: {
+					height: '90rpx',
+					fontSize: '32rpx',
+					marginTop: '60rpx'
+				},
+			}
+		},
+		methods: {
+			async resetPwdSubmit() {
+				if (!this.email || this.email.length == 0) {
+					uni.$u.toast(this.i18n.t('app.user.login.message.email_error'));
+					return;
+				}
+
+				if (!this.code || this.code.length == 0) {
+					uni.$u.toast(this.i18n.t('app.user.login.message.code_error'));
+					return;
+				}
+				let params = {
+					email: this.email.trim(),
+					captcha: this.code.trim(),
+				};
+				const res = await userResetPasswordApi(params);
+				if (res.code == 0) {
+					uni.$u.toast(i18n.t('app.user.login.message.send_to_email'));
+					setTimeout(() => {
+						uni.navigateBack();
+					}, 1000);
+				} else {
+					this.handleEnd();
+					uni.$u.toast(res.datas);
+				}
+			},
+			async getVerifyCode() {
+				let params = {
+					email: this.email.trim(),
+					type: 'reset',
+				}
+				const res = await getcheckEmailApi(params);
+				if(res.code == 0){
+					try{
+						let verifyParams = {
+							email: this.email.trim(),
+							purpose: 3,
+						}
+						const verifyRes =await EmailCodeSubmitApi(verifyParams)
+						if(verifyRes == 0){
+							uni.$u.toast(i18n.t('app.user.login.message.send_to_email'));
+						}
+					}catch(e){
+						this.handleEnd();
+						//TODO handle the exception
+					}
+				}else{
+					uni.$u.toast(res.datas);
+				}
+			},
+			async sendEmailCodeSubmit() {
+				if (!this.email || this.email.length == 0) {
+					uni.$u.toast(this.i18n.t('app.user.login.message.email_error'));
+					return;
+				}
+				if (this.$refs.resetCode.canGetCode) {
+					this.$refs.resetCode.start();
+					this.isDisable = true;
+					await this.getVerifyCode();
+				} else {
+					uni.$u.toast(this.i18n.t('app.user.login.message.countdown_reacquire'));
+				}
+			},
+			codeChange(text) {
+				this.$nextTick(() => {
+					this.tips = text;
+				});
+			},
+			handleEnd() {
+				this.isDisable = false;
+				this.$refs.resetCode.reset();
+				this.$nextTick(() => {
+					this.tips = this.i18n.t('app.user.login.reacquire');
+				});
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		flex: 1;
+		padding: 0rpx 40rpx;
+		background-color: $app-background;
+	}
+
+	.input {
+		width: 660rpx;
+		height: 80rpx;
+		padding-left: 30rpx;
+		font-size: $font-size-md;
+		margin-top: 50rpx;
+		border-radius: 50rpx;
+		background-color: $app-surface;
+	}
+
+	.code-box {
+		width: 750rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		position: relative;
+
+		.reget-code {
+			height: 80rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			padding: 22rpx 20rpx;
+			color: $app-link;
+			position: absolute;
+			top: 50rpx;
+			right: 50rpx;
+		}
+
+		.disabled {
+			color: $app-text-disabled;
+		}
+	}
+
+	.submit-btn {
+		width: 660rpx;
+	}
+</style>

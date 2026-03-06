@@ -1,0 +1,192 @@
+<!-- 店铺设置 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.shop.setting')" :autoBack="true" placeholder></u-navbar>
+		<view class="setting-container">
+			<text class="notify">{{ i18n.t('app.user.shop.notice') }}</text>
+			<view class="content" @click="updateName()">
+				<text class="label">{{ i18n.t('app.user.shop.name.label') }}</text>
+				<view class="name-box">
+					<text class="name">{{ shop.name }}</text>
+					<u-icon name="arrow-right" color="#888" size="12"></u-icon>
+				</view>
+			</view>
+			<view class="content">
+				<text class="label">{{ i18n.t('app.user.shop.online_title') }}</text>
+				<u-switch v-model="shop.isOnline" @change="changeStatus" size="20"></u-switch>
+			</view>
+			<view class="content">
+				<view class="time-box">
+					<text class="label">{{ i18n.t('app.user.shop.automatic_offline') }}</text>
+					<text v-if="hour&&minute&&shop.openAutoClose" class="time-picker"
+						@click="isSetClose=true">{{ hour + ' : ' + minute }}</text>
+					<u-datetime-picker :show="isSetClose" @confirm="setAutoTime" @cancel="isSetClose=false"
+						mode="time"></u-datetime-picker>
+				</view>
+				<u-switch v-model="shop.openAutoClose" @change="changeAutoOffline" size="20"></u-switch>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		getAppUserInfo
+	} from '@/utils/storage/modules/user.js';
+	import {
+		GetUserShopInfoApi,
+		ChangeShopStatusApi,
+		ChangeAutoOfflineApi,
+		SetShopAutoCloseApi
+	} from '@/api/modules/shop/shop.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				shop: {},
+				showUpdate: false,
+				hour: null,
+				minute: null,
+				isSetClose: false
+			}
+		},
+		onShow() {
+			this.getShopInfo();
+		},
+		mounted() {
+			uni.$on('update_shop', () => {
+				this.refresh();
+			});
+		},
+		methods: {
+			updateName() {
+				uni.$u.route('/pages/shop/shop-manage/update-name');
+			},
+			async getShopInfo() {
+				const uuid = getAppUserInfo().shop.uuid;
+				const res = await GetUserShopInfoApi({
+					uuid: uuid
+				});
+				if (res.statusCode == 200) {
+					this.shop = res.datas;
+					this.hour = this.getTimeFormat(this.shop.hour);
+					this.minute = this.getTimeFormat(this.shop.minute);
+				}
+			},
+			getTimeFormat(value) {
+				if (!value) return '00';
+				if (Number(value) < 10) {
+					return '0' + value;
+				} else {
+					return value;
+				}
+			},
+			async changeStatus() {
+				const res = await ChangeShopStatusApi();
+				if (res.statusCode == 200) {
+					uni.$u.toast(i18n.t('app.system.message.success'));
+					uni.$emit('update-shop-status');
+				} else {
+					uni.showModal({
+						title: this.i18n.t('app.system.tips.title'),
+						content: this.i18n.t('app.user.shop.message.ban_offline'),
+						confirmText: this.i18n.t('app.common.confirm'),
+						cancelText: this.i18n.t('app.common.cancel'),
+					})
+					this.shop.isOnline = false;
+				}
+			},
+			async changeAutoOffline() {
+				const res = await ChangeAutoOfflineApi({
+					flag: this.shop.openAutoClose
+				});
+				if (res.code == 0) {
+					this.refresh();
+				}
+			},
+			async setAutoTime(e) {
+				let arr = e.value.split(":");
+				this.hour = arr[0];
+				this.minute = arr[1];
+				const res = await SetShopAutoCloseApi({
+					hour: this.hour,
+					minute: this.minute
+				});
+				console.log(res)
+				if (res.code == 0) {
+					this.isSetClose = false;
+					this.refresh();
+					uni.$u.toast(i18n.t('app.system.message.success'));
+				}
+			},
+			refresh() {
+				this.shop = {};
+				this.getShopInfo();
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.setting-container {
+		width: 750rpx;
+		background: $app-background;
+		padding: 0rpx 20rpx;
+	}
+
+	.notify {
+		width: 710rpx;
+		padding: 20rpx;
+		color: $app-text-thirdly;
+		background: $app-surface;
+		font-size: $font-size-md;
+		margin-bottom: 20rpx;
+	}
+
+	.content {
+		width: 710rpx;
+		padding: 20rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+
+		.label {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+
+		.time-box {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.time-picker {
+			background: $app-surface-elevated;
+			color: $app-text-thirdly;
+			text-align: center;
+			margin-left: 20rpx;
+			padding: 10rpx 14rpx;
+			font-size: $font-size-md;
+		}
+
+		.name-box {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-end;
+		}
+
+		.name {
+			font-size: $font-size-md;
+			color: $app-text-thirdly;
+			margin-right: 10rpx;
+		}
+	}
+</style>

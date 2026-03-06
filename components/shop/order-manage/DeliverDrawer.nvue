@@ -1,0 +1,435 @@
+<template>
+	<view class="drawer-container">
+		<view class="popup-header-container">
+			<view class="popup-header-left">
+				<u-icon name="arrow-leftward" color="#888" size="16" @click="close()"></u-icon>
+				<text class="popup-header-text">{{i18n.t('app.trade.order.details')}}</text>
+			</view>
+		</view>
+
+		<view class="popup-header-buyer" v-if="users&&users[buyer]">
+			<text class="user-tips">{{i18n.t('app.trade.order.seller_tips_3')}}</text>
+			<view class="item-buyer-user">
+				<image class="buyer-user-avatar" src="/static/image/login/steam-icon.png"></image>
+				<text class="buyer-user-name"
+					v-if="users[buyer]&&users[buyer].nickname">{{users[buyer].nickname}}</text>
+				<text class="buyer-user-level" v-if="users[buyer].level">{{users[buyer].level}}</text>
+				<image class="buyer-user-yearsLevel" v-if="users[buyer].yearsLevel"
+					:src="`https://community.cloudflare.steamstatic.com/public/images/badges/02_years/steamyears${users[buyer].yearsLevel}_80.png`">
+				</image>
+				<u-icon name="reload" size="20" color="#888" @click="refreshBuyer()"></u-icon>
+			</view>
+		</view>
+		<list class="scroll-list" :style="{height: getSystemInfo().windowHeight - 80 + 'px'}">
+			<cell>
+				<view class="deliver-num">
+					<text class="text">{{ i18n.t('app.trade.deliver.num')+' ('+totalItems+')' }}</text>
+				</view>
+			</cell>
+			<cell v-for="item in list" :key="item.id">
+				<view class="popup-container">
+					<view class="pending-item-header">
+						<text class="text">{{i18n.t('app.trade.order.number') + ':' + item.id}}</text>
+						<text class="text">{{createTime(item)}}</text>
+					</view>
+					<view class="pending-detail-items" v-for="detail in item.details" :key="detail.id">
+						<base-item :item="detail" :isExterior="false" :schema="schemas[detail.market_hash_name]"
+							:width="140"></base-item>
+						<text class="market-name">{{detail.market_name}}</text>
+						<text class="market-price">{{currencySymbol + detail.price}}</text>
+						<text class="item-abradability"
+							v-if="detail.paint_wear">{{i18n.t('app.market.csgo.abradability') + ':' + detail.paint_wear}}</text>
+						<wear-progress-bar class="progress-bar" v-if="detail.paint_wear" :paintWear="detail.paint_wear"
+							width="380"></wear-progress-bar>
+					</view>
+				</view>
+			</cell>
+		</list>
+		<view v-if="list.length > 0">
+			<text v-if="list.length > 0 && list[0].status == 2" class="deliver-btn"
+			      @click="debugClick()">{{i18n.t('app.market.product.deliver')}}</text>
+			<text v-if="list[0].status == 3" class="deliver-btn"
+				@click="close()">{{i18n.t('app.trade.deliver.message.go_steam')}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import config from '@/config/index.js'
+	import BaseItem from '@/components/game-item/index.nvue'
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue'
+	import {
+		ShopPendingShipmentListApi
+	} from '@/api/modules/shop/shop-product.js'
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js'
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js'
+	import {
+		TradeOfferRemoteQuoteApi
+	} from '@/api/modules/shop/shop-tradeoffer.js'
+	import {
+		GetSteamUserInfoApi,
+		steamOnlineStateApi
+	} from '@/api/modules/steam.js'
+	import {
+		GetUserShopInfoApi,
+	} from '@/api/modules/shop/shop.js'
+
+	export default {
+		components: {
+			BaseItem,
+			WearProgressBar,
+		},
+		props: {
+			buyer: {
+				type: String || Number,
+				default: '',
+			},
+			status: {
+				type: String || Number,
+				default: '',
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				list: [],
+				schemas: null,
+				users: null,
+				stickers: null,
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+			}
+		},
+		computed: {
+			totalItems() {
+				return this.list.reduce((acc, order) => acc + (order.details?.length || 0), 0);
+			}
+		},
+		created() {
+			console.log('>>> drawer created, buyer:', this.buyer, 'status:', this.status);
+			  if (!this.buyer) {
+			    return;
+			  }
+			  this.getBuyerList();
+		},
+		mounted() {
+		},
+		methods: {
+			debugClick() {
+			  this.deliverSubmit();
+			},
+			async refreshBuyer() {
+				uni.showLoading({
+					title: this.i18n.t('app.system.tips.please_wait'),
+					mask: true
+				});
+				let avatar = this.users[this.buyer].avatar;
+				let level = this.users[this.buyer].level;
+				let nickname = this.users[this.buyer].nickname;
+				let yearsLevel = this.users[this.buyer].yearsLevel;
+				this.users[this.buyer].avatar = '';
+				this.users[this.buyer].level = '';
+				this.users[this.buyer].nickname = '';
+				this.users[this.buyer].yearsLevel = '';
+
+				const res = await GetSteamUserInfoApi({
+					id: this.buyer
+				})
+				uni.hideLoading();
+				if (res.code == 0) {
+					this.users[this.buyer].avatar = res.datas && res.datas.avatar ? res.datas.avatar : avatar;
+					this.users[this.buyer].level = res.datas && res.datas.level ? res.datas.level : level;
+					this.users[this.buyer].nickname = res.datas && res.datas.nickname ? res.datas.nickname : nickname;
+					this.users[this.buyer].yearsLevel = res.datas && res.datas.yearsLevel ? res.datas.yearsLevel :
+						yearsLevel;
+					this.$forceUpdate();
+				}
+			},
+			/**
+			 * steam是否存在长期token
+			 */
+			async deliverSubmit() {
+				console.log('>>> deliverSubmit clicked');
+				const steamStatus = await steamOnlineStateApi();
+				console.log('>>> steamStatus:', steamStatus); 
+				// steam是否存在长期token
+				if (!steamStatus.datas) {
+					uni.showModal({
+						content: i18n.t('app.steam.session.expired'),
+						confirmText: this.i18n.t('app.common.confirm'),
+						cancelText: this.i18n.t('app.common.cancel'),
+						success: (res) => {
+							if (res.confirm) {
+								uni.$u.route('/pages/user/steam/steam-simulate-login');
+							}
+						}
+					});
+					return
+				}
+
+				try {
+					uni.showLoading({
+						title: this.i18n.t('app.trade.deliver.message.creating'),
+						mask: true
+					});
+					console.log('>>> 准备调用 TradeOfferRemoteQuoteApi，入参：', this.list[0].id);
+					const res = await TradeOfferRemoteQuoteApi({
+						id: this.list[0].id,
+					});
+					console.log('>>> TradeOfferRemoteQuoteApi 返回', res);
+					uni.hideLoading();
+					if (res.datas.includes('Steam issue') || res.datas.includes('Inventory privacy')) {
+						let msg = this.i18n.t('app.inventory.message.privacy') + getAppUserInfo().config.nickname
+						uni.showModal({
+							content: res.datas.includes('Steam issue') ? this.i18n.t(
+								'app.steam.message.trading_restrictions') : msg,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							
+						})
+						return;
+					}
+
+					if (res.code == 0) {
+						uni.$u.toast(i18n.t('app.trade.deliver.message.steam_trade_url_success'));
+						this.$emit('success');
+						this.close();
+						uni.hideTabBarRedDot({
+							index: 2
+						})
+						uni.$emit('delivery-submit');
+						return;
+					}
+					uni.$u.toast(res.datas);
+				} catch (error) {
+					uni.hideLoading()
+					console.log(error)
+				}
+			},
+
+			async getBuyerList() {
+				try {
+					const res = await ShopPendingShipmentListApi({
+						appId: getGameType(),
+						isload: true,
+						buyer: this.buyer,
+						page: this.pager.page,
+						pageSize: this.pager.pageSize,
+						statusList: this.status ? [this.status] : [2, 3]
+					});
+					if (res.code == 0 && res.datas) {
+						this.list = res.datas.sends;
+						this.schemas = res.datas.schemas;
+						this.stickers = res.datas.stickers;
+						this.users = res.datas.users;
+					}
+				} catch (error) {
+					console.log(error)
+				}
+			},
+			createTime(item) {
+				return uni.$u.timeFormat(item.create_time, 'mm-dd hh:MM');
+			},
+			close() {
+				this.$emit('close');
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync()
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.drawer-container {
+		height: 1360rpx;
+	}
+
+	.scroll-list {
+		display: flex;
+		align-items: center;
+		padding-bottom: 100px;
+	}
+
+	.popup-header-container {
+		width: 600rpx;
+		height: 30px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		background-color: $app-background;
+		padding: 20rpx;
+
+		.popup-header-left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+		}
+
+		.popup-header-text {
+			font-size: $font-size-md;
+			color: $app-text-secondary;
+			margin-left: 20rpx;
+		}
+	}
+
+	.popup-header-buyer {
+		width: 600rpx;
+		height: 70px;
+		padding: 20rpx;
+		background-color: rgb(253, 249, 240);
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+
+		.user-tips {
+			width: 560rpx;
+			color: orange;
+			font-size: $font-size-xs;
+			padding-bottom: 10rpx;
+			font-weight: bold;
+		}
+
+		.item-buyer-user {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			flex-wrap: wrap;
+			padding: 4rpx 8rpx;
+			height: 30px;
+			background-color: rgb(243, 245, 251);
+			border-radius: 2rpx;
+			margin-top: 10rpx;
+
+			.buyer-user-avatar {
+				width: 25rpx;
+				height: 25rpx;
+				border-radius: 25rpx;
+				margin-left: 5rpx;
+				background-color: $app-background-black;
+			}
+
+			.buyer-user-name {
+				text-align: left;
+				margin-left: 5rpx;
+				margin-right: 10rpx;
+				font-size: $font-size-sm;
+				color: $app-text-primary;
+			}
+
+			.buyer-user-yearsLevel {
+				width: 50rpx;
+				height: 50rpx;
+				margin-right: 10rpx;
+			}
+
+			.buyer-user-level {
+				width: 50rpx;
+				height: 50rpx;
+				line-height: 45rpx;
+				border: 4rpx solid $app-text-disabled;
+				border-radius: 5rpx;
+				text-align: center;
+				color: $app-text-primary;
+				font-size: $font-size-xs;
+				border-radius: 30rpx;
+				margin-right: 10rpx;
+			}
+		}
+	}
+
+	.deliver-btn {
+		width: 560rpx;
+		height: 60rpx;
+		line-height: 60rpx;
+		text-align: center;
+		color: $app-background;
+		font-size: $font-size-md;
+		background-color: rgb(73, 115, 199);
+		position: fixed;
+		bottom: 10rpx;
+		right: 25rpx;
+		 
+	}
+
+	.deliver-num {
+		width: 580rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: flex-start;
+		padding: 20rpx;
+
+		.text {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+	}
+
+	.popup-container {
+		width: 580rpx;
+		border-radius: 2rpx;
+		margin-bottom: 10rpx;
+		background-color: $app-background;
+		border: 1rpx solid $app-surface;
+	}
+
+	.pending-item-header {
+		width: 580rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 10rpx 20rpx;
+
+		.text {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.pending-detail-items {
+		width: 580rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		flex-wrap: wrap;
+		padding: 10rpx 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+		border-radius: 4rpx;
+
+		.market-name {
+			width: 240rpx;
+			color: $app-text-primary;
+			padding-left: 10rpx;
+			font-weight: bold;
+			font-size: $font-size-sm;
+		}
+
+		.market-price {
+			width: 140rpx;
+			font-weight: bold;
+			padding-top: 10rpx;
+			text-align: right;
+			color: $app-text-price;
+			font-size: $font-size-sm;
+		}
+
+		.item-abradability {
+			width: 520rpx;
+			font-size: $font-size-xs;
+			color: $app-text-thirdly;
+			margin: 10rpx 0;
+		}
+	}
+</style>

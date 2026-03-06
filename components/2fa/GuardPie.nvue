@@ -1,0 +1,183 @@
+<template>
+	<view class="guard-item-pie" @click="openBind()">
+		<text v-if="isUser()" class="guard-item-code" >
+			{{ guardInfo.secret ? secretCode : i18n.t('app.user.guard.bind_tips') }}
+		</text>
+		<text v-else class="guard-item-code">{{ guardInfo.secret ? secretCode : i18n.t('app.user.guard.bind_tips') }}</text>
+		<view class="guard-pie" v-if="guardInfo.secret">
+			<view class="left-deg" :style="leftStyle"></view>
+			<view class="right-deg" :style="rightStyle"></view>
+		</view>
+	</view>
+</template>
+
+<script>
+	const jsotp = require('jsotp');
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+
+	export default {
+		props: {
+			interval: {
+				type: Number,
+				default: 30
+			},
+			guardInfo: {
+				type: Object,
+				required: true
+			}
+		},
+		data() {
+			return {
+				i18n,
+				secretCode: '',
+				localCount: 0,
+				deg: 0,
+				timer: null
+			};
+		},
+		computed: {
+			leftStyle() {
+				if (this.localCount > (this.interval / 2)) {
+					return {
+						transform: 'rotate(-' + this.getDeg(this.deg) + 'deg)',
+						backgroundColor: '#4674c9'
+					}
+				} else {
+					return {
+						transform: 'rotate(-' + this.getDeg(this.deg) + 'deg)',
+						backgroundColor: '#4674c9'
+					}
+				}
+			},
+			rightStyle() {
+				if (this.localCount < (this.interval / 2)) {
+					return {
+						transform: 'rotate(0deg)',
+						backgroundColor: '#4674c9'
+					}
+				} else if (this.localCount == this.interval) {
+					return {
+						transform: 'rotate(0deg)',
+						backgroundColor: '#4674c9'
+					}
+				} else {
+					return {
+						transform: 'rotate(-180deg)',
+						backgroundColor: '#4674c9'
+					}
+				}
+			}
+		},
+		created() {
+			if(this.guardInfo.secret){
+				this.secretCode = jsotp.TOTP(this.guardInfo.secret).now();
+				this.updateCount();
+				this.timer = setInterval(this.updateCount, 1000);
+			}
+		},
+		beforeDestroy() {
+			if (this.timer) clearInterval(this.timer);
+		},
+		methods: {
+			isUser() {
+				return getAppUserInfo().id === this.guardInfo.userId && getAppUserInfo().appUse === this.guardInfo.appUse ? true : false;
+			},
+			getDeg(deg) {
+				let angle = 360 / this.interval; // 计算每一份圆形倒计时的大小
+				let cur_deg = (deg + (this.localCount * angle)) % 180; // 计算当前角度（初始角度 + （当前倒计时 * 每一份圆形倒计时的大小））% 半圆
+				return cur_deg;
+			},
+			openBind() {
+				if (!this.guardInfo.secret) {
+					this.$emit('change', this.guardInfo);
+				} else {
+					uni.setClipboardData({
+						data: this.secretCode,
+						success: function() {
+							uni.$u.toast(i18n.t('app.system.message.copy_success'));
+						}
+					});
+				}
+			},
+			updateCount() {
+				try {
+					const now = Math.floor(Date.now() / 1000);
+					this.localCount = this.interval - (now % this.interval);
+					if (this.localCount === this.interval) {
+						this.secretCode = jsotp.TOTP(this.guardInfo.secret).now();
+						if(getAppUserInfo().safeTokenStatus)return;
+						this.$emit('generationCode', this.secretCode);
+					}
+				} catch (error) {
+					console.log(error)
+					//TODO handle the exception
+				}
+			}
+		}
+	};
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.guard-item-pie {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.guard-item-code {
+		font-size: $font-size-xl;
+		color: $app-link;
+		font-weight: bold;
+		padding: 10rpx 0;
+	}
+
+	.guard-pie {
+		width: 40rpx;
+		height: 40rpx;
+		border-radius: 30rpx;
+		margin-left: 10rpx;
+		position: relative;
+
+		.right-deg {
+			width: 20rpx;
+			height: 40rpx;
+			position: absolute;
+			right: 0rpx;
+			top: 0rpx;
+			border-top-right-radius: 30rpx;
+			border-bottom-right-radius: 30rpx;
+			transform: rotate(0deg);
+			transform-origin: left center;
+			z-index: 9999;
+		}
+
+		.left-deg {
+			width: 20rpx;
+			height: 40rpx;
+			position: absolute;
+			top: 0rpx;
+			left: 0rpx;
+			border-top-left-radius: 30rpx;
+			border-bottom-left-radius: 30rpx;
+			transform: rotate(0deg);
+			transform-origin: right center;
+			z-index: 9999;
+			background-color: $app-surface;
+		}
+
+		.left-bg-deg {
+			width: 20rpx;
+			height: 40rpx;
+			border-top-left-radius: 30rpx;
+			border-bottom-left-radius: 30rpx;
+			background-color: $app-link;
+			z-index: -9999;
+		}
+	}
+</style>

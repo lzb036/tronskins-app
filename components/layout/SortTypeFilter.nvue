@@ -1,0 +1,306 @@
+<!-- 排序组件 -->
+<template>
+	<view>
+		<view class="search-container">
+			<view class="search-bar" @click="openSearch()">
+				<u-icon class="search-icon" color="#888" name="search" size="20"></u-icon>
+				<text class="label">{{i18n.t('app.market.filter.search')}}</text>
+				<view class="scan-box" @click.stop="scanCode">
+					<u-icon class="scan-icon" color="#4973c9" name="scan" size="20"></u-icon>
+				</view>
+			</view>
+			<image class="filter-icon" src="/static/image/filter/selector-icon.png" @click="goodsFilter()">
+			</image>
+			<u-popup :show="isType" @close="isType = false" mode="right">
+				<game-item-filter-rules v-if="appid==730" @filter="filterMarket($event)"></game-item-filter-rules>
+				<tf2-game-item-filter-rules v-if="appid==440" @filter="filterMarket($event)"></tf2-game-item-filter-rules>
+				<dota2-game-item-filter-rules v-if="appid==570" @filter="filterMarket($event)"></dota2-game-item-filter-rules>
+			</u-popup>
+		</view>
+		<u-popup :show="isSearch" @close="closeMode()" @open="openMode()" mode="center" safeAreaInsetTop>
+			<view class="overlay" v-if="showOverlay" @click="hideKeyboard()"></view>
+			<view class="filter-container"
+				:style="{width:'750rpx',height:getSystemInfo().windowHeight - getSystemInfo().statusBarHeight + 'px'}">
+				<view class="filter-search-header">
+					<u-icon class="filter-search-icon" color="#888" name="search" size="20"></u-icon>
+					<input v-model="marketName" @input="change" @focus="showOverlay=true" @confirm="handleSearch" class="filter-search-input" type="text"
+						:focus="true" :placeholder="i18n.t('app.market.filter.search')"></input>
+					<text class="filter-search-cancel" @click="closeMode()">{{i18n.t('app.common.cancel')}}</text>
+				</view>
+				<text class="item-market-name" v-for="item in list" :key="item.id"
+					@click="routerMarket(item)">{{item.market_name}}</text>
+				<view class="item-query-wrap" v-if="list.length == 0">
+					<text class="query-name" v-for="q in historyList" :key="q.market_name"
+						@click="routerMarket(q)">{{q.market_name}}</text>
+				</view>
+			</view>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import GameItemFilterRules from '@/components/layout/GameItemFilterRules.nvue';
+	import tf2GameItemFilterRules from '@/components/layout/tf2/GameItemFilterRules.nvue';
+	import dota2GameItemFilterRules from '@/components/layout/dota2/GameItemFilterRules.nvue';
+	import {
+		MarketQueryItemNameApi
+	} from '@/api/modules/market.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		Storage
+	} from '@/utils/storage/index.js';
+	import {
+		scanLogin
+	} from '@/services/user.js';
+	
+	export default {
+		components: {
+			GameItemFilterRules,
+			tf2GameItemFilterRules,
+			dota2GameItemFilterRules
+		},
+		props: {
+			appid: {
+				type: Number || String,
+				default: 730
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				isSearch: false,
+				isType: false,
+				list: [],
+				historyList: this.getHistoryList(),
+				showOverlay: false,
+			}
+		},
+		methods: {
+			scanCode(e) {
+				e.stopPropagation();
+				scanLogin();
+			},
+			handleSearch(e) {
+				this.isSearch = false;
+				this.showOverlay = false;
+				console.log(e.detail.value)
+				uni.$u.route('/pages/product-market/index', {
+					market_name: e.detail.value
+				});
+			},
+			hideKeyboard() {
+				this.showOverlay = false;
+				uni.hideKeyboard();
+			},
+			goodsFilter() {
+				this.isType = true;
+			},
+			getHistoryList() {
+				return Storage.memory.get('es_query_history') ? Storage.memory.get('es_query_history') : [];
+			},
+			
+			filterMarket(obj) {
+			  const tags = {
+			    ...obj.tags,
+			    field: obj.sortField || 'price',
+			    asc: obj.sortAsc !== undefined ? obj.sortAsc : false
+			  };
+			  uni.$u.route('/pages/product-market/index', {
+			    itemName: obj.itemName || '',
+			    tags: encodeURIComponent(JSON.stringify(tags))
+			  });
+			},
+			routerMarket(item) {
+				Storage.memory.set('es_query_history', this.prioritizeOrAdd(this.getHistoryList(), item))
+				uni.$u.route('/pages/product-market/index', {
+					market_name: item.market_name
+				});
+			},
+			openSearch(){
+				this.marketName = '';
+				this.isSearch = true;
+				this.list = [];
+				this.historyList = this.getHistoryList();
+			},
+			openMode() {
+				this.list = [];
+			},
+			closeMode() {
+				this.list = [];
+				this.isSearch = false;
+				this.showOverlay = false;
+				this.marketName = '';
+				uni.hideKeyboard();
+			},
+			prioritizeOrAdd(arr, target) {
+				// 查找目标数据的索引（根据实际需求调整比较逻辑）
+				const index = arr.findIndex(item => item.market_name == target.market_name);
+				if (index !== -1) {
+					// 存在：删除并插入到开头
+					const [existing] = arr.splice(index, 1);
+					arr.unshift(existing);
+				} else {
+					// 超过15则删除
+					if (arr.length >= 15) {
+						arr.splice(arr.length - 1, 1);
+					}
+					// 不存在：直接插入到开头
+					arr.unshift(target);
+				}
+				return arr;
+			},
+			async change(e) {
+				try {
+					const res = await MarketQueryItemNameApi({
+						appId: getGameType(),
+						keywords: e.detail.value
+					})
+					this.showOverlay = false;
+					if (res.code == 0) {
+						this.list = res.datas;
+					}
+				} catch (error) {
+					uni.hideLoading();
+					//TODO handle the exception
+				}
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../theme.scss";
+	.filter-container {
+		background-color: $app-background;
+		padding: 20rpx;
+
+		.filter-search-header {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-surface;
+			padding: 10rpx;
+
+			.filter-search-icon {
+				width: 50rpx;
+				height: 50rpx;
+			}
+
+			.filter-search-input {
+				width: 580rpx;
+				height: 50rpx;
+				color: $app-text-hint;
+				font-size: $font-size-sm;
+			}
+
+			.filter-search-cancel {
+				color: $app-text-hint;
+				font-size: $font-size-sm;
+			}
+		}
+
+		.item-query-wrap {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+			margin-top: 20rpx;
+			background-color: $app-background;
+
+			.query-name {
+				height: 40rpx;
+				font-size: $font-size-sm;
+				padding: 10rpx 20rpx;
+				background-color: $app-surface;
+				color: $app-text-secondary;
+				border-radius: 5rpx;
+				margin: 5rpx;
+			}
+		}
+
+		.item-market-name {
+			width: 710rpx;
+			padding: 20rpx 0;
+			color: $app-text-secondary;
+			font-size: $font-size-sm;
+			border-bottom: 1px solid $app-surface;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+	}
+
+	.search-container {
+		width: 750rpx;
+		height: 40px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+
+		.filter-icon {
+			width: 46rpx;
+			height: 40rpx;
+		}
+
+		.search-bar {
+			width: 660rpx;
+			height: 62rpx;
+			display: flex;
+			flex-direction: row;
+			border-radius: 3rpx;
+			align-items: center;
+			justify-content: center;
+			padding: 10rpx;
+			margin: 20rpx 14rpx 20rpx 10rpx;
+			background: $app-surface-elevated;
+			position: relative;
+
+			.scan-box {
+				width: 70rpx;
+				height: 62rpx;
+				position: absolute;
+				right: 0rpx;
+				top: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 10rpx 15rpx;
+			}
+
+			.search-icon {
+				position: absolute;
+				left: 20rpx;
+			}
+			
+			.scan-icon {
+				position: absolute;
+				left: 10rpx;
+			}
+
+			.label {
+				color: $app-text-hint;
+				font-size: $font-size-sm;
+				padding-top: 2rpx;
+				position: absolute;
+				left: 70rpx;
+			}
+		}
+	}
+	
+	.overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0);
+		z-index: 9999;
+	}
+</style>

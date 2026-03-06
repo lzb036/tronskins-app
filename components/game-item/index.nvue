@@ -1,0 +1,254 @@
+<template>
+	<view class="item-container" :style="{width:width + 'rpx'}">
+		<view class="item-row" :style="getWidthStyle()">
+			<image class="item-img-bg" :src="getImageBg()" :style="getWidthStyle()"></image>
+			<image v-if="image_url" class="item-img" :src="image_url" :style="getBorderStyle()"></image>
+			<view class="item-value" v-if="isExterior&&exterior">
+				<text class="exterior" :style="getExteriorBg()"
+					v-if="exterior.localized_name">{{exterior.localized_name}}</text>
+				<text v-if="item.paint_seed" class="paint-seed" :style="getExteriorStyle()">{{item.paint_seed}}</text>
+				<text v-if="item.phase" class="paint-seed" :style="getExteriorStyle()">{{item.phase}}</text>
+				<text v-if="item.percentage" class="paint-phase" :style="getExteriorStyle()">{{item.percentage}}%</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config/index.js';
+	import i18n from '@/utils/locales/i18n';
+	import {
+		itemImage
+	} from './itemUtlis.js';
+	export default {
+		props: {
+			item: {
+				type: Object,
+				default: {},
+			},
+			schema: {
+				type: Object,
+				default: {},
+			},
+			width: {
+				type: Number,
+				default: 120,
+			},
+			height: {
+				type: Number,
+				default: 0,
+			},
+			isExterior: {
+				type: Boolean,
+				default: true
+			},
+			isBorderRadius: {
+				type: Boolean,
+				default: false
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				quality: this.schema.tags?.quality,
+				exterior: this.schema.tags?.exterior,
+				rarity: this.schema.tags?.rarity,
+				image_url: this.schema.image_url ? this.schema.image_url : this.item.image_url,
+			}
+		},
+		created() {
+			this.height = this.height ? this.height : this.width * 0.6;
+		},
+		methods: {
+			getWidthStyle() {
+				return {
+					width: this.width + 'rpx',
+					height: this.height + 'rpx',
+					borderRadius: this.isBorderRadius ? '10rpx' : 'none'
+				}
+			},
+			getBorderStyle() {
+				if (this.item) {
+					if (this.item.app_id == 570) {
+						if (this.quality?.color == 'D2D2D2') {
+							this.quality.color = 'FFFFFF';
+						}
+						return {
+							'width': this.width + 'rpx',
+							'height': this.height + 'rpx',
+							'border': `2px solid #${this.quality?.color || 'FFFFFF'}`,
+						}
+					}
+					return {
+						'width': this.width * 0.8 + 'rpx',
+						'height': this.height * 0.8 + 'rpx',
+						'margin': (this.width - (this.width * 0.8)) / 2 + 'rpx',
+					}
+				}
+			},
+			/**
+			 * 获取饰品图片的静态地址
+			 * @param {string} imagePath - 图片路径
+			 * @returns {string} - 完整的图片地址
+			 */
+			getImageStatic(imagePath) {
+				return `/static/image/game/${imagePath}`;
+			},
+
+			/**
+			 * 获取饰品外观的背景色
+			 * @param {Object} item - 饰品对象
+			 * @returns {Object|null} - 背景色样式对象，如果不存在外观则返回 null
+			 */
+			getExteriorBg(item) {
+				if (this.exterior?.color) {
+					return {
+						backgroundColor: `#${this.exterior.color}`,
+						fontSize: this.width * 0.1 + 'rpx',
+						height: this.width * 0.2 + 'rpx',
+					};
+				}
+				return null;
+			},
+			getExteriorStyle(){
+				return {
+					fontSize: this.width * 0.11 + 'rpx',
+					height: this.width * 0.2 + 'rpx',
+				}
+			},
+			getImageBg() {
+				if (this.rarity) {
+					return itemImage(this.rarity);
+				}
+				return itemImage();
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.market-name {
+		height: 50rpx;
+		padding: 10rpx;
+		font-size: $font-size-md;
+		color: $app-text-primary;
+	}
+
+	.ellipsis {
+		lines: 1;
+		text-overflow: ellipsis;
+	}
+
+	.item-row {
+		position: relative;
+
+		.item-img-bg {
+			opacity: 0.9;
+			position: absolute;
+			left: 0;
+			top: 0;
+		}
+
+		.sticker-list {
+			left: 0;
+			bottom: 35rpx;
+			display: flex;
+			flex-direction: row;
+			position: absolute;
+
+			.sticker-img {
+				width: 35rpx;
+				height: 35rpx;
+				margin-left: 5rpx;
+			}
+		}
+
+		.item-value {
+			left: 0rpx;
+			top: 0rpx;
+			display: flex;
+			flex-direction: row;
+			position: absolute;
+
+			.exterior {
+				font-size: $font-size-xs;
+				color: $app-background;
+				background-color: $app-background-black;
+				padding: 6rpx 4rpx;
+			}
+
+			.paint-seed {
+				color: $app-background;
+				font-size: $font-size-xs;
+				background-color: $app-text-primary;
+				text-align: center;
+				position: relative;
+				left: 0;
+				opacity: 0.6;
+				padding: 6rpx;
+			}
+
+			.paint-phase {
+				color: $app-background;
+				font-size: $font-size-xs;
+				background-color: $app-text-primary;
+				text-align: center;
+				position: relative;
+				left: 0;
+				opacity: 0.6;
+				padding: 6rpx;
+			}
+		}
+
+		.item-label {
+			position: absolute;
+			left: 0rpx;
+			bottom: 0rpx;
+			height: 36rpx;
+			background-color: black;
+			align-items: center;
+			justify-content: center;
+			opacity: 0.7;
+
+			.lable-text {
+				font-size: $font-size-xs;
+				color: $app-background;
+			}
+		}
+	}
+
+	.item-footer {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 5rpx 10rpx;
+		margin-bottom: 10rpx;
+
+		.price-box {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+		}
+
+		.price-label {
+			font-size: $font-size-md;
+			color: $app-danger;
+			margin-right: 8rpx;
+		}
+
+		.price-value {
+			font-size: $font-size-md;
+			color: $app-danger;
+			font-weight: 300;
+		}
+
+		.sell-num {
+			color: $app-text-thirdly;
+			font-size: $font-size-xs;
+		}
+	}
+</style>

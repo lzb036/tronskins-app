@@ -1,0 +1,293 @@
+<!-- 2FA令牌 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.menu.guard')" :autoBack="true" placeholder>
+			<template v-slot:right>
+				<view style="padding: 0 24rpx; display: flex; align-items: center;" @click="showBind = true">
+					<u-icon name="plus" color="#555" size="20"></u-icon>
+				</view>
+			</template>
+		</u-navbar>
+		<u-swipe-action>
+			<u-swipe-action-item v-for="guardInfo in guardList" :key="guardInfo.userId" :options="actionOptions"
+				@click="deleteGuard($event, guardInfo)">
+				<view class="guard-item" :style="getUserBg(guardInfo)">
+					<view class="guard-item-acount">
+						<text class="guard-app-use">[{{guardInfo.appUse}}]</text>
+						<text class="guard-show-email">{{guardInfo.showEmail}}</text>
+					</view>
+					<guard-pie :guardInfo="guardInfo" @change="openBind($event)"
+						@generationCode="handleGeneration($event)"></guard-pie>
+				</view>
+			</u-swipe-action-item>
+		</u-swipe-action>
+		<u-popup :show="showBind" @close="showBind = false" mode="center">
+			<text class="pop-title">{{ i18n.t('app.user.guard.sync_token') }}</text>
+			<view class="bind-container">
+				<input v-model="email" class="email-input" disabled />
+				<input v-model="AccountEmailCode" class="bind-input"
+					:placeholder="i18n.t('app.user.login.enter_captcha')"> </input>
+				<view class="bind-wrap">
+					<u-code class="code-count" ref="uCode" @change="codeChange" seconds="60" changeText="x"></u-code>
+					<u-button @tap="sendEmailCodeSubmit()" :text="tips" type="success" size="mini" ></u-button>
+					<u-button class="control-btn" @click="bindGuardSubmit()" style="margin-left: 5rpx;"
+						v-if="tips != i18n.t('app.user.guard.get_captcha')" :text="i18n.t('app.common.confirm')"
+						type="success" size="mini"></u-button>
+				</view>
+			</view>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import GuardPie from '@/components/2fa/GuardPie.nvue';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		Guard2faCheckApi,
+		getGuardInfoApi,
+		EmailCodeCaptchaApi,
+		BindGuardApi
+	} from '@/api/modules/login/auth.js';
+	import {
+		get2FAList,
+		set2FAList,
+		bindSecret
+	} from '@/utils/storage/modules/2fa-token.js';
+
+	export default {
+		components: {
+			GuardPie
+		},
+		data() {
+			return {
+				email: '',
+				i18n: i18n,
+				currentGuard: {},
+				guardList: null,
+				isBind: false,
+				showBind: false,
+				AccountEmailCode: '',
+				tips: i18n.t('app.user.guard.get_captcha'),
+				actionOptions: [{
+					text: i18n.t('app.common.delete'),
+					style: {
+						backgroundColor: '#b01d1d',
+					}
+				}],
+
+			}
+		},
+		mounted() {
+			this.guardList = get2FAList();
+			this.checkGuardStatus();
+			console.log(this.guardList)
+		},
+		methods: {
+			async checkGuardStatus() {
+				const res = await Guard2faCheckApi();
+				if (res.code == 0) {
+					this.email = res.datas.email;
+					this.isBind = res.datas.twoFa;
+				}
+			},
+			deleteGuard(e, info) {
+				this.guardList = this.guardList.filter(item =>
+					item.userId !== info.userId || item.appUse !== info.appUse
+				);
+				set2FAList(this.guardList);
+			},
+			openBind(guardInfo) {
+				if(!this.isBind){
+					uni.$u.toast(this.i18n.t('app.user.guard.set_tips'));
+					return
+				}
+				if(guardInfo.userId != getAppUserInfo().config.id && guardInfo.appUse != getAppUserInfo().appUse){
+					return;
+				}
+				this.currentGuard = guardInfo;
+				this.showBind = true;
+				this.AccountEmailCode = '';
+			},
+			/**
+			 * 绑定2fa令牌
+			 */
+			async bindGuardSubmit() {
+				try {
+					if (!this.AccountEmailCode) {
+						uni.$u.toast(this.i18n.t('app.user.login.enter_captcha'));
+						return
+					}
+					const res = await getGuardInfoApi({
+						emailCode: this.AccountEmailCode
+					});
+					console.log(res)
+					if (res.code == 0) {
+						// 1. 写回缓存
+						bindSecret({
+							appUse: res.datas.appUse,
+							userId: res.datas.userId,
+							secret: res.datas.secret,
+							showEmail: this.email,
+						});
+						// 2. 刷新本地列表
+						const newList = JSON.parse(JSON.stringify(get2FAList()));
+						this.guardList = newList;
+						this.showBind = false;
+					}
+					uni.$u.toast(res.datas);
+				} catch (error) {
+					//TODO handle the exception
+				}
+			},
+
+			async handleGeneration(secretCode) {
+				if (this.isBind || !secretCode) return;
+				const res = await BindGuardApi({
+					code: secretCode
+				});
+				console.log(res)
+				if (res.code == 0) {
+					uni.$u.toast(res.datas);
+				}
+			},
+			getUserBg(guard) {
+				if (getAppUserInfo().id === guard.userId && getAppUserInfo().appUse === guard.appUse) {
+					return {
+						'backgroundColor': '#b7d8ff'
+					}
+				}
+			},
+			getGuardIndex() {
+				let i = null;
+				this.guardList.forEach((guard, index) => {
+					if (this.currentGuard.userId === guard.userId && this.currentGuard.appUse === guard.appUse) {
+						i = index;
+					}
+				})
+				return i; 
+			},
+			codeChange(text) {
+				this.tips = text;
+			},
+			async sendEmailCodeSubmit() {
+				if (this.$refs.uCode.canGetCode) {
+					this.$refs.uCode.start();
+					const res = await EmailCodeCaptchaApi();
+					console.log(res)
+					if (res.code == 0) {
+						uni.$u.toast(this.i18n.t('app.user.guard.send_email_tips'));
+					} else {
+						uni.$u.toast(res.datas);
+					}
+				} else {
+					uni.$u.toast(this.i18n.t('app.user.guard.get_captcha'));
+				}
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.guard-item {
+		width: 750rpx;
+		padding: 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+
+		.guard-item-acount {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.guard-app-use {
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				font-weight: 600;
+				padding-right: 10rpx;
+			}
+
+			.guard-show-email {
+				font-size: $font-size-sm;
+				color: $app-text-primary;
+			}
+		}
+
+		.guard-item-note {
+			.title {
+				font-size: $font-size-md;
+				color: $app-text-thirdly;
+			}
+		}
+
+		.guard-bind-btn {
+			position: absolute;
+			right: 30rpx;
+			top: 30rpx;
+		}
+	}
+	.pop-title {
+		text-align: center;
+		font-size: 32rpx;
+		font-weight: 500;
+		padding-top: 24rpx;;
+	}
+
+	.bind-container {
+		width: 500rpx;
+		padding: 20rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+
+		.bind-tip {
+			color: $app-text-thirdly;
+			font-size: $font-size-sm;
+		}
+
+		.bind-input {
+			width: 420rpx;
+			color: $app-text-primary;
+			padding: 5rpx;
+			height: 50rpx;
+			font-size: $font-size-sm;
+			border: 1px solid $app-surface;
+			margin-top: 20rpx;
+		}
+		.email-input {
+			width: 420rpx;
+			color: #999; 
+			padding: 5rpx;
+			height: 50rpx;
+			font-size: $font-size-sm;
+			border: 1px solid $app-surface;
+			margin-top: 20rpx;
+		}
+
+		
+
+		.bind-wrap {
+			width: 420rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-end;
+			margin-bottom: 20rpx;
+			margin-top: 20rpx;
+
+			.code-count {
+				width: 150rpx;
+			}
+
+
+			.control-btn {
+				width: 100rpx;
+			}
+		}
+	}
+</style>

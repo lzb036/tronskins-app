@@ -1,0 +1,478 @@
+<!-- steam 管理 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.steam.account.management')" :autoBack="false" placeholder
+			right-icon="more-dot-fill" @right-click="toSteamRefreshToken()" @left-click="backToSetting()"></u-navbar>
+		<view class="steam-setting-container">
+			<view class="steam-user">
+				<image class="steam-user-avatar"
+					:src="steamConfig ? getImageLocal(steamConfig.avatar) : '/static/image/user/none.png'" mode="">
+				</image>
+				<view class="steam-user-info" @click="onCopy()">
+					<text class="nickname">{{ steamConfig ? steamConfig.nickname : '' }}</text>
+					<view class="steam-copy-box">
+						<text class="steamid">{{steamConfig ? 'STEAM ID : ' + steamConfig.steamId : '' }}</text>
+						<image v-if="steamConfig" class="copy-icon" src="/static/image/copy.png" mode=""></image>
+					</view>
+				</view>
+				<text v-if="steamConfig" class="steam-btn"
+					@click="unbindSteamCheck()">{{i18n.t('app.steam.account.unbind')}}</text>
+				<text v-else class="steam-btn" @click="bindSteam()">{{i18n.t('app.steam.account.bind')}}</text>
+			</view>
+			<view class="steam-box" v-if="steamConfig">
+				<view class="title">
+					<text class="title-status-label">{{i18n.t('app.steam.account.status_success')}}</text>
+					<text class="title-reload-label"
+						@click="getUserSteamTradingStatus()">{{i18n.t('app.common.refresh')}}</text>
+				</view>
+				<view :class="steamTradeStatus?'steam-trade-success':'steam-trade-error'"
+					v-if="steamTradeStatus!==null">
+					<u-icon v-if="steamTradeStatus" name="checkbox-mark" color="#146017" size="18"></u-icon>
+					<u-icon v-else name="close-circle-fill" color="#6b0318" size="18"></u-icon>
+					<text
+						:class="steamTradeStatus?'text':'error-text'">{{ steamTradeStatus ? i18n.t('app.steam.account.status_success') : i18n.t('app.steam.account.status_error') }}</text>
+				</view>
+			</view>
+			<view class="steam-box" v-if="steamConfig">
+				<view class="title">
+					<text class="title-status-label">{{i18n.t('app.steam.tradeLink_text')}}</text>
+					<text class="title-reload-label"
+						@click="getTradeLinks()">{{i18n.t('app.steam.settings.go_get')}}</text>
+				</view>
+				<view  :class="steamTradeStatus?'steam-trade-success':'steam-trade-error'">
+					<input class="text" v-model="tradeUrl" />
+				</view>
+			</view>
+			<view class="steam-box" v-if="steamConfig">
+				<view class="title">
+					<text class="title-status-label">{{i18n.t('app.steam.api_key.setting')}}</text>
+					<text class="title-reload-label" @click="getAPIKey()">{{i18n.t('app.steam.settings.go_get')}}</text>
+				</view>
+				<view :class="steamTradeStatus?'steam-trade-success':'steam-trade-error'">
+					<input class="text" v-model="apikey" />
+				</view>
+			</view>
+			<text class="confrim-btn" :style="getButtonStyle()"
+				@click="confrim()">{{i18n.t('app.market.filter.finish')}}</text>
+		</view>
+		<u-popup :show="show" mode="center" @close="show=false">
+			<steam-user-info v-if="steamConfig" :avatar="getImageLocal(steamConfig.avatar)"
+				:nickname="steamConfig.nickname" @close="show=false"></steam-user-info>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		userInfoApi
+	} from '@/api/modules/user.js';
+	import {
+		steamOnlineStateApi,
+		steamTradingStateApi,
+		getTemporaryTokenApi,
+		steamUnbindCheckApi,
+		setTradeUrlApi,
+		setApiKey
+	} from '@/api/modules/steam.js';
+	import SteamUserInfo from '@/components/steam/steam-user-info.nvue';
+
+	export default {
+		components: {
+			SteamUserInfo
+		},
+		data() {
+			return {
+				i18n: i18n,
+				steamConfig: null,
+				steamTradeStatus: null,
+				tradeUrl: null,
+				apikey: null,
+				isUpdate: false,
+				show: false,
+			}
+		},
+		onLoad(options) {
+			if (options.showSteamIdNotMatch === 'true') {
+				this.handleNotMatch();
+			}
+		},
+		async mounted() {
+			await this.reload();
+			plus.key.addEventListener('backbutton', this.backToSetting);
+		},
+		watch: {
+			tradeUrl(val) {
+				if(val){
+					if (val.length == 0) {
+						this.isUpdate = false;
+						return;
+					}
+					this.isUpdate = !!(this.steamConfig.tradeUrl != val || this.apikey != this.steamConfig.sensitiveAccessKey);
+				}
+			},
+			apikey(val) {
+				if(val){
+					if (val.length == 0) {
+						this.isUpdate = false;
+						return;
+					}
+					this.isUpdate = !!(this.steamConfig.sensitiveAccessKey != val || this.tradeUrl != this.steamConfig.tradeUrl);
+				}
+			},
+		},
+		beforeDestroy() {
+			plus.key.removeEventListener('backbutton');
+		},
+		methods: {
+			handleNotMatch() {
+				setTimeout(() => {
+					this.show = true;
+				}, 2000);
+			},
+			async confrim() {
+				let flag_url = !!(this.tradeUrl && this.tradeUrl.length > 0 && this.tradeUrl !== this.steamConfig.tradeUrl);
+    			let flag_key = !!(this.apikey && this.apikey.length > 0 && this.apikey !== this.steamConfig.sensitiveAccessKey);
+    
+				if (!flag_url && !flag_key) {
+					if (!this.tradeUrl && !this.apikey) {
+						uni.$u.toast(this.i18n.t('app.steam.message.enter_link_and_key'));
+					} else {
+						uni.$u.toast(this.i18n.t('app.steam.message.no_changes'));
+					}
+					return;
+				}
+				try {
+					uni.showLoading({
+						mask: true
+					});
+					await this.saveTradeUrl();
+					setTimeout(async () => {
+						if (!flag_key) {
+							this.reload();
+							return;
+						}
+						await this.saveAccessKey();
+					}, 1000);
+				} catch (err) {} finally {
+					uni.hideLoading();
+				}
+			},
+			getButtonStyle() {
+				const systemInfo = uni.getSystemInfoSync();
+				return {
+					'marginTop': (systemInfo.safeArea.bottom - 140) + 'rpx',
+					'background': this.isUpdate ? '#146017' : '#5b5b5b'
+				}
+			},
+			async saveTradeUrl() {
+				if (this.tradeUrl === this.steamConfig.tradeUrl) return;
+				const res = await setTradeUrlApi({
+					tradeUrl: this.tradeUrl
+				});
+				if (res && res.code == 0) {
+					uni.$u.toast(this.i18n.t('app.steam.message.save_link_success'));
+				} else {
+					uni.$u.toast(res.datas);
+				}
+			},
+			async saveAccessKey() {
+				if (this.apikey === this.steamConfig.sensitiveAccessKey) return;
+				const res = await setApiKey({
+					accessKey: this.apikey
+				});
+				if (res && res == 0) {
+					uni.$u.toast(this.i18n.t('app.steam.message.save_key_success'));
+				} else {
+					uni.$u.toast(res.datas);
+				}
+				setTimeout(() => {
+					this.reload();
+				}, 1500);
+			},
+			async reload() {
+				this.isUpdate = false;
+				await this.getUserInfo();
+				await this.getUserSteamTradingStatus();
+				await this.refreshSteamStatus();
+			},
+			async getUserInfo() {
+				const res = await userInfoApi();
+				if (res.code == 0) {
+					this.steamConfig = res.datas.config;
+					this.tradeUrl = this.steamConfig.tradeUrl;
+					this.apikey = this.steamConfig.sensitiveAccessKey;
+				}
+			},
+			async getUserSteamTradingStatus() {
+				try {
+					this.steamTradeStatus = null;
+					uni.showLoading({
+						mask: true
+					});
+					const res = await steamTradingStateApi();
+					if (res && res.code == 0) {
+						this.steamTradeStatus = res.datas;
+					}
+				} catch (err) {} finally {
+					uni.hideLoading();
+				}
+			},
+			getTradeLinks() {
+				if (this.steamConfig.steamId) {
+					uni.$u.route('/pages/user/steam/steam-trade-url', {
+						steamId: this.steamConfig.steamId
+					});
+				}
+			},
+			getAPIKey() {
+				uni.$u.route('/pages/user/steam/steam-api-key');
+			},
+			async refreshSteamStatus() {
+				if (!this.steamConfig) {
+					uni.showModal({
+						content: i18n.t('app.steam.message.unbind'),
+						confirmText: i18n.t('app.common.confirm'),
+						cancelText: i18n.t('app.common.cancel'),
+						success: async (res) => {
+							if (res.confirm) {
+								this.bindSteam();
+							}
+						}
+					});
+					return;
+				}
+				const res = await steamOnlineStateApi();
+				if (!res.datas) {
+					uni.showModal({
+						content: i18n.t('app.steam.session.expired'),
+						confirmText: i18n.t('app.common.confirm'),
+						cancelText: i18n.t('app.common.cancel'),
+						success: async (res) => {
+							if (res.confirm) {
+								this.toSteamRefreshToken();
+							}
+						}
+					});
+				}
+			},
+			toSteamRefreshToken() {
+				uni.$u.route('/pages/user/steam/steam-simulate-login');
+			},
+			// 解绑
+			async unbindSteamCheck() {
+				const res = await steamUnbindCheckApi();
+				if (res.statusCode == 200) {
+					uni.showModal({
+						title: i18n.t('app.system.tips.title'),
+						content: i18n.t('app.steam.account.unbind_tips'),
+						confirmText: i18n.t('app.common.confirm'),
+						cancelText: i18n.t('app.common.cancel'),
+						success: (res) => {
+							if (res.confirm) {
+								uni.$u.route('/pages/user/steam/unbind-steam');
+							}
+						}
+					});
+				} else {
+					uni.showModal({
+						title: i18n.t('app.system.tips.title'),
+						content: res.datas,
+						confirmText: i18n.t('app.common.confirm'),
+						cancelText: i18n.t('app.common.cancel'),
+					});
+				}
+			},
+			async bindSteam() {
+				let res = await getTemporaryTokenApi();
+				if (res && res.code == 0) {
+					uni.$u.route('/pages/user/steam/bind-steam?token=' + res.datas + '&isSteamSetting=true');
+				}
+			},
+			onCopy() {
+				uni.setClipboardData({
+					data: this.steamConfig.steamId,
+					success: function() {
+						uni.$u.toast(i18n.t('app.system.message.copy_success'));
+					}
+				});
+			},
+			getImageLocal(avatar) {
+				if(avatar){
+					let imagePath = 'https://www.tronskins.com/fms/image';
+					return avatar.startsWith("http") ? avatar : imagePath + avatar;
+				}
+			},
+			async backToSetting() {
+				await uni.redirectTo({
+					url: '/pages/user/settings/index'
+				});
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.steam-setting-container {
+		width: 750rpx;
+		padding: 40rpx 20rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.steam-box {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		padding: 30rpx 0 10rpx;
+
+		.title {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding-right: 10rpx;
+			padding-bottom: 10rpx;
+
+			.title-status-label {
+				font-size: $font-size-sml;
+				color: $app-text-thirdly;
+			}
+
+			.title-reload-label {
+				font-size: $font-size-sml;
+				color: $app-text-thirdly;
+			}
+		}
+
+		.steam-trade-error {
+			width: 710rpx;
+			padding: 10rpx 20rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+			background-color: $app-light-red;
+			border-radius: 5rpx;
+			margin-top: 5rpx;
+
+			.error-text {
+				width: 620rpx;
+				color: $app-danger-dark;
+				font-size: $font-size-sm;
+				text-overflow: ellipsis;
+				lines: 1;
+				text-align: left;
+				padding: 10rpx 0 10rpx 10rpx;
+			}
+		}
+
+		.steam-trade-success {
+			width: 710rpx;
+			padding: 10rpx 20rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+			background-color: $app-background-green-light;
+			border-radius: 5rpx;
+			margin-top: 5rpx;
+
+			.text {
+				width: 620rpx;
+				color: $app-text-success;
+				font-size: $font-size-sm;
+				text-overflow: ellipsis;
+				lines: 1;
+				text-align: left;
+				padding: 10rpx 0 10rpx 10rpx;
+			}
+		}
+		.steam-trade-error {
+			width: 710rpx;
+			padding: 10rpx 20rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+			background-color: $app-light-red;
+			border-radius: 5rpx;
+			margin-top: 5rpx;
+
+			.text {
+				width: 620rpx;
+				color: $app-text-success;
+				font-size: $font-size-sm;
+				text-overflow: ellipsis;
+				lines: 1;
+				text-align: left;
+				padding: 10rpx 0 10rpx 10rpx;
+			}
+		}
+		
+	}
+
+	.confrim-btn {
+		width: 360rpx;
+		height: 80rpx;
+		color: $app-background;
+		border-radius: 5rpx;
+		text-align: center;
+		padding: 14rpx 0;
+	}
+
+	.steam-user {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 20rpx;
+
+		.steam-user-avatar {
+			width: 80rpx;
+			height: 80rpx;
+			border-radius: 50rpx;
+			border: 1rpx solid $app-text-secondary;
+		}
+
+		.steam-user-info {
+			width: 520rpx;
+			padding: 10rpx;
+
+			.nickname {
+				color: $app-text-primary;
+				font-size: $font-size-md;
+			}
+
+			.steam-copy-box {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+			}
+
+			.steamid {
+				color: $app-text-thirdly;
+				font-size: $font-size-xs;
+			}
+
+			.copy-icon {
+				width: 20rpx;
+				height: 20rpx;
+			}
+		}
+
+		.steam-btn {
+			width: 100rpx;
+			font-size: $font-size-sm;
+			border: 1rpx solid $app-text-thirdly;
+			text-align: center;
+			padding: 10rpx 0;
+		}
+	}
+</style>

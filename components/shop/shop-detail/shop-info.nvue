@@ -1,0 +1,281 @@
+<template>
+	<view class="info-container">
+		<view class="header">
+			<view class="user" @click="toSellerShop()">
+				
+				<text class="name">{{ shopInfo.name }}</text>
+			</view>
+			<view class="days">
+				<text :class="isWeek?'active text':'text'" @click="changeDate()">7天</text>
+				<text :class="!isWeek?'active text':'text'" @click="changeDate()">30天</text>
+			</view>
+		</view>
+		<view class="content">
+			<view class="left">
+				<view class="icon-box">
+					<u-icon name="account" color="#e7e7e7" size="32"></u-icon>
+				</view>
+				<view class="question-box" @click="show = true">
+					<text class="text">{{ i18n.t('app.user.shop.deliver') }}</text>
+					<u-icon name="question-circle" color="#e7e7e7" size="15"></u-icon>
+				</view>
+			</view>
+			<view class="right">
+				<view class="rate-item">
+					<text
+						class="label">{{ i18n.t('app.user.shop.deliver_rate_success') + '/' + (isWeek?7:30) + i18n.t('app.common.day')}}</text>
+					<text class="value">{{ sendRate }}</text>
+				</view>
+				<view class="rate-item">
+					<text
+						class="label">{{ i18n.t('app.user.shop.deliver_time_average') + '/' + (isWeek?7:30) + i18n.t('app.common.day') }}</text>
+					<text class="value">{{ sendAvgTime + i18n.t('app.common.minutes') }}</text>
+				</view>
+				<view class="rate-item">
+					<text
+						class="label">{{ i18n.t('app.user.shop.undelivered_times') + '/' + (isWeek?7:30) + i18n.t('app.common.day') }}</text>
+					<text class="value">{{ (isWeek
+    ? (shopInfo.last7daysNotSend || 0)
+    : (shopInfo.last30daysNotSend || 0))
+  + i18n.t('app.common.times') }}</text>
+				</view>
+			</view>
+		</view>
+		<u-popup :show="show" mode="center" @close="show = false">
+			<view class="warn-tips">
+				<text class="title">{{ i18n.t('app.system.tips.warm') }}</text>
+				<text class="text">{{ i18n.t('app.user.shop.message.order_placed') }}</text>
+				<u-button class="know-btn" type="primary" color="#4674c9" @click="show = false"
+					:text="i18n.t('app.user.shop.deliver_iknow')">
+				</u-button>
+			</view>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import config from '@/config'
+	import i18n from '@/utils/locales/i18n';
+	import {
+		GetUserShopInfoApi,
+	} from '@/api/modules/shop/shop.js'
+	import {
+		getAppUserInfo
+	} from '@/utils/storage/modules/user.js' //记得删
+
+	export default {
+		props: ['shopInfo'],
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				isWeek: true,
+				sendAvgTime: 0,
+				sendRate: 0,
+				show: false
+			}
+		},
+		mounted() {
+			this.shopCalculation();
+		},
+		methods: {
+			changeDate() {
+				this.isWeek = !this.isWeek;
+				this.shopCalculation();
+			},
+			shopCalculation() {
+				const avgTimeKey = this.isWeek ? 'last7daysAvg' : 'last30daysAvg';
+				const numsKey = this.isWeek ? 'last7daysNums' : 'last30daysNums';
+				const notSendKey = this.isWeek ? 'last7daysNotSend' : 'last30daysNotSend';
+
+				if (!this.shopInfo) return;
+
+				// 1. 平均发货时间
+				let avg = Number(this.shopInfo[avgTimeKey] || 0);
+				this.sendAvgTime = avg > 60 ?
+					`${Math.floor(avg / 60)}${i18n.t('app.common.hours')}${avg % 60}` :
+					avg;
+
+				// 2. 发货率 —— 把字段显式转成数字再判断
+				const nums = Number(this.shopInfo[numsKey] || 0);
+				const notSend = Number(this.shopInfo[notSendKey] ?? 0);
+				this.sendRate = nums === 0 ?
+					'0%' :
+					`${((nums - notSend) / nums * 100).toFixed(2)}%`;
+			},
+			getImageLocal() {
+				if (!this.shopInfo || !this.shopInfo.avatar || typeof this.shopInfo.avatar !== 'string') {
+					return '/static/image/user/none.png';
+				}
+				let imagePath = 'https://www.tronskins.com/fms/image';
+				return this.shopInfo.avatar.startsWith("http") ? this.shopInfo.avatar : imagePath + this.shopInfo.avatar;
+			},
+			toSellerShop() {
+				uni.$u.route('/pages/user/user-shop/index', {
+					uuid: this.shopInfo.uuid
+				});
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.info-container {
+		width: 750rpx;
+		padding: 20rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		background: #292929;
+	}
+
+	.header {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 20rpx;
+
+		.user {
+			width: 400rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+
+			.img {
+				width: 80rpx;
+				height: 80rpx;
+				border-radius: 50rpx;
+			}
+
+			.name {
+				color: #e7e7e7;
+				font-weight: bold;
+				font-size: 30rpx;
+				margin-left: 10rpx;
+				text-align: left;
+				flex: 1;
+			}
+		}
+
+		.days {
+			width: 200rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-end;
+			background: #292929;
+			border: 2rpx solid #47526e;
+
+			.text {
+				width: 100rpx;
+				color: #e7e7e7;
+				font-size: 28rpx;
+				padding: 10rpx 0;
+				text-align: center;
+			}
+
+			.active {
+				background: #47526e;
+			}
+		}
+	}
+
+	.content {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+
+		.left {
+			width: 230rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+
+			.icon-box {
+				width: 80rpx;
+				height: 80rpx;
+				border-radius: 50rpx;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				background: #47526e;
+			}
+
+			.question-box {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				justify-content: center;
+				margin-top: 20rpx;
+			}
+
+			.text {
+				color: #e7e7e7;
+				font-size: 26rpx;
+				margin-right: 5rpx;
+			}
+		}
+
+		.right {
+			width: 480rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+		}
+	}
+
+	.rate-item {
+		width: 480rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10rpx 0;
+
+		.label {
+			color: #e7e7e7;
+			padding-left: 14rpx;
+			font-size: 26rpx;
+			border-left: 3rpx solid #47536d;
+		}
+
+		.value {
+			color: #e7e7e7;
+			font-size: 26rpx;
+		}
+	}
+
+	.warn-tips {
+		width: 640rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 30rpx;
+
+		.title {
+			color: #3d3d3d;
+			font-size: 32rpx;
+			font-weight: bold;
+		}
+
+		.text {
+			color: #888;
+			font-size: 28rpx;
+			margin: 30rpx 0;
+		}
+
+		.know-btn {
+			width: 340rpx;
+			height: 60rpx;
+		}
+	}
+</style>

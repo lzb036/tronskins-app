@@ -1,0 +1,84 @@
+<!-- 热门关注组件 -->
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<waterfall-refresh :dataList="list" :total="total" height="44" @refresh="refresh()" @loadMore="loadMore()">
+			<template #header>
+				<sort-type-filter :appid="appid"></sort-type-filter>
+			</template>
+			<template #item="{ item }">
+				<item-template :key="item.id" :item="item" width="355"></item-template>
+			</template>
+		</waterfall-refresh>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import SortTypeFilter from '@/components/layout/SortTypeFilter.nvue';
+	import WaterfallRefresh from '@/components/layout/waterfall-refresh.nvue';
+	import ItemTemplate from '@/components/game-item/ItemTemplate.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		marketHotItemsApi
+	} from '@/api/modules/market.js';
+	
+	export default {
+		components: {
+			ItemTemplate,
+			SortTypeFilter,
+			WaterfallRefresh,
+		},
+		data() {
+			return {
+				appid: getGameType(),
+				i18n: i18n,
+				list: [],
+				pager: {
+					page: 1,
+					pageSize: 20
+				},
+				total: null,
+				isLoading: false,
+			}
+		},
+		created() {
+			this.fetchMarketHotItems()
+		},
+		methods: {
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async fetchMarketHotItems() {
+				const res = await marketHotItemsApi({
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+				});
+				this.list = this.list.concat(res.datas);
+				this.total = this.list.length;
+			},
+			refresh() {
+				uni.$u.debounce(async () => {
+					try {
+						this.isLoading = true;
+						this.list = [];
+						await this.fetchMarketHotItems();
+					} catch (error) {
+						//TODO handle the exception
+					} finally {
+						this.isLoading = false;
+					}
+				}, 500)
+			},
+			loadMore() {
+				this.pager.page++;
+				this.fetchMarketHotItems();
+			}
+		}
+	}
+</script>

@@ -1,0 +1,113 @@
+<template>
+	<view class="charts-box">
+		<l-echart ref="chartRef" @finished="init"></l-echart>
+	</view>
+</template>
+
+<script>
+	import i18n from "@/utils/locales/i18n";
+	import * as echarts from "echarts";
+	export default {
+		props: {
+			timeList: {
+				type: Array,
+				default: () => []
+			},
+			priceList: {
+				type: Array,
+				default: () => []
+			},
+			legend: {
+				type: String,
+				default: ''
+			}
+		},
+		data() {
+			return {
+				option: {
+					tooltip: {
+						trigger: 'axis',
+						axisPointer: {
+							type: 'shadow'
+						},
+						confine: true
+					},
+					grid: {
+						left: 20,
+						right: 20,
+						bottom: 15,
+						top: 40,
+						containLabel: true
+					},
+					legend: {
+						data: [i18n.t(this.legend)]
+					},
+					xAxis: [{
+						type: 'time',
+						max: '',
+						min: '',
+						axisLine: {
+							lineStyle: {
+								color: '#999999'
+							}
+						},
+						axisLabel: {
+							color: '#666666',
+							// formatter: function (value, index) {
+							//     // 格式化成月/日，只在第一个刻度显示年份
+							//     var date = new Date(value);
+							//     var texts = [(date.getMonth() + 1), date.getDate()];
+							//     if (index === 0) {
+							//         texts.unshift(date.getFullYear());
+							//     }
+							//     return texts.join('/');
+							// }
+						},
+					}],
+					yAxis: [{
+						type: 'value',
+						axisTick: {
+							show: false
+						},
+						data: [],
+						axisLine: {
+							lineStyle: {
+								color: '#999999'
+							}
+						},
+						axisLabel: {
+							color: '#666666'
+						}
+					}],
+					series: [{
+						name: i18n.t(this.legend),
+						type: 'line',
+						data: []
+					}, ]
+				},
+			}
+		},
+		methods: {
+			async init() {
+				if (this.priceList.length > 0 || this.timeList.length > 0) {
+					const maxTimestamp = this.timeList.reduce((max, current) => Math.max(max, current), -Infinity);
+					const minTimestamp = this.timeList.reduce((min, current) => Math.min(min, current), Infinity);
+					this.option.xAxis[0].max = maxTimestamp;
+					this.option.xAxis[0].min = minTimestamp;
+					this.option.series[0].data = this.priceList.map((price, index) => [
+						[this.timeList[index], Number(price)]
+					]).reduce((acc, curr) => acc.concat(curr), []);
+					const chart = await this.$refs.chartRef.init(echarts);
+					chart.setOption(this.option);
+				}
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.charts-box {
+		width: 750rpx;
+		height: 408rpx;
+	}
+</style>

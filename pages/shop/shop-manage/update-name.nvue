@@ -1,0 +1,94 @@
+<template>
+	<div>
+		<u-navbar :title="i18n.t('app.user.shop.name.change')" :autoBack="true" placeholder></u-navbar>
+		<div class="container">
+			<text class="shop-name">{{i18n.t('app.user.shop.name.label')}}</text>
+			<div class="input-box">
+				<input class="input" v-model="name" type="text" :placeholder="i18n.t('app.user.shop.name.change_placeholder')"></input>
+			</div>
+			<div class="notice">
+				<text class="text">·{{i18n.t('app.user.shop.name.change_tips_1')}}</text>
+				<text class="text">·{{i18n.t('app.user.shop.name.change_tips_2')}}</text>
+				<text class="text">·{{i18n.t('app.user.shop.name.change_tips_3')}}</text>
+			</div>
+			<text class="confirm-btn" @click="confirm()">{{i18n.t('app.common.confirm')}}</text>
+		</div>
+	</div>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		ChangeShopNameApi
+	} from '@/api/modules/shop/shop.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				name: ''
+			}
+		},
+		methods: {
+			async confirm() {
+				const res = await ChangeShopNameApi({
+					name: this.name
+				});
+				if(res.code == 0){
+					uni.$emit('update_shop');
+					uni.navigateBack();
+				}
+				uni.$u.toast(res.datas);
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	.container {
+		display: flex;
+		flex-direction: column;
+		padding: 20rpx;
+
+		.shop-name {
+			text-align: left;
+			color: $app-link;
+			font-size: $font-size-md;
+		}
+
+		.input-box {
+			width: 700rpx;
+			margin: 20rpx 0 30rpx 0;
+			border: 1rpx solid $app-divider;
+
+			.input {
+				font-size: $font-size-md;
+				padding-left: 10rpx;
+			}
+		}
+
+		.notice {
+			display: flex;
+			flex-direction: column;
+
+			.text {
+				text-align: left;
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				margin-bottom: 10rpx;
+			}
+		}
+
+		.confirm-btn {
+			width: 700rpx;
+			height: 70rpx;
+			color: $app-background;
+			background: $app-link;
+			text-align: center;
+			margin: 30rpx 5rpx;
+			font-size: $font-size-md;
+			padding-top: 20rpx;
+		}
+	}
+</style>

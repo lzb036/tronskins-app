@@ -1,0 +1,583 @@
+<!-- 饰品详情 -->
+<template>
+	<view class="show-container">
+		<u-loading-page :loading="!asset" loading-text="loading..." />
+		<list class="page-list" v-if="asset">
+			<!-- ① 顶部导航 -->
+			<cell>
+				<view class="show-header-nav" :style="{paddingTop:getSystemInfo().statusBarHeight + 10 + 'px'}">
+					<u-icon name="arrow-left" size="16" color="#fff" @click="routeBack()" />
+					<view class="right">
+						<text class="market-text"
+							@click="toItemTemplate()">{{ i18n.t('app.market.detail.right_text') }}</text>
+						<u-icon class="collect-icon" v-if="!asset.favorited&&!asset.Own" name="heart" color="#fff"
+							size="24" @click="addProduct()" />
+						<u-icon class="collect-icon" v-if="asset.favorited&&!asset.Own" name="heart-fill"
+							color="#4773c8" size="24" @click="removeProduct()" />
+					</view>
+				</view>
+			</cell>
+			<!-- ② 大图 + 贴纸 -->
+			<cell>
+				<view class="item-image-wrap">
+					<BaseItem :isExterior="false" :item="this.asset" :schema="schemas[asset.schema_id]" :width="750" />
+					<sticker-list v-if="asset.stickers" class="item-sticker" :list="asset.stickers" :schemas="schemas"
+						:width="80" />
+				</view>
+			</cell>
+			<!-- ③ 名称、磨损、贴纸列表、属性 -->
+			<cell>
+				<text class="item-market-name" @click="toItemTemplate()">{{schemas[asset.schema_id].market_name}}</text>
+				<view class="item-csgo-wrap">
+					<text class="item-phase "
+						v-if="asset.csgoAsset.paint_seed">{{i18n.t('app.market.csgo.paint_index') + ' (paint seed): ' + asset.csgoAsset.paint_seed}}</text>
+					<text class="item-phase"
+						v-if="asset.csgoAsset.percentage">{{'('+i18n.t('app.market.csgo.percentage')+ asset.csgoAsset.percentage +'%'+')'}}</text>
+				</view>
+				<view class="item-csgo-wrap" :width="700">
+					<text class="item-paint-seed"v-if="asset.csgoAsset.paint_index">{{i18n.t('app.market.detail.skin_number') + ' (paint index): ' + asset.csgoAsset.paint_index}}</text>
+					<text class="item-paint-seed" v-if="asset.phase">{{'('+ asset.phase+')'}}</text><!--款式-->
+					<text class="item-paint-seed" v-if="asset.tier">{{'('+ asset.tier+')'}}</text><!--淬火等级-->
+					<text class="item-paint-seed" v-if="asset.fire_ice">{{'('+ asset.fire_ice+')'}}</text><!--冰火档-->
+				</view>
+				<view class="abradability-wrap" v-if="asset.csgoAsset.paint_wear">
+					<text
+						class="item-abradability">{{i18n.t('app.market.csgo.abradability') + ': ' + asset.csgoAsset.paint_wear}}</text>
+					<wear-progress-bar :paintWear="asset.paint_wear" :width="700" />
+				</view>
+
+				<view class="item-sticker-list" v-if="asset.stickers && asset.stickers.length > 0">
+					<view v-for="sticker in asset.stickers" :key="sticker" class="sticket-item">
+						<view class="left">
+							<image class="sticket-image" :src="schemas[sticker].image_url" />
+						</view>
+						<view class="right">
+							<text class="text">{{schemas[sticker].market_name}}</text>
+							<text class="text">{{currencySymbol +' ' + schemas[sticker].market_price}}</text>
+						</view>
+					</view>
+				</view>
+				<view class="item-sticker-list" v-if="asset.keychains && asset.keychains.length > 0">
+					<view v-for="keychains in asset.keychains" :key="sticker" class="sticket-item">
+						<view class="left">
+							<image class="sticket-image" :src="schemas[keychains].image_url" />
+						</view>
+						<view class="right">
+							<text class="text">{{schemas[keychains].market_name}}</text>
+							<text class="text">{{currencySymbol +' ' + schemas[keychains].market_price}}</text>
+						</view>
+					</view>
+				</view>
+
+				<view class="item-property-description">
+					<text class="title">{{i18n.t('app.market.detail.attribute')}}</text>
+					<view class="item-tags">
+						<text class="label">{{type().localized_name}}</text>
+						<text class="label" :style="{color:'#'+ rarity().color}">{{rarity().localized_name}}</text>
+						<text class="label">{{quality().localized_name}}</text>
+					</view>
+					<text class="item-exterior"
+						v-if="exterior()">{{i18n.t('app.market.filter.appearance') + ': ' + exterior().localized_name}}</text>
+					<text class="item-exterior">{{itemSet().localized_name}}</text>
+				</view>
+			</cell>
+			<cell>
+				<ShopInfo :shopInfo="shop" />
+			</cell>
+			<!-- ⑤ 垫高：让列表能继续上滑，露出被 fixed 栏挡住的内容 -->
+			<cell>
+				<view style="height:120rpx;background:transparent;" />
+			</cell>
+		</list>
+		</list>
+		<!-- 底部固定栏 -->
+		<view class="bottom-box" v-if="asset && !isHideBottom">
+			<text class="price">{{'$' + ' ' + (asset.price || '0')}}</text>
+			<view class="right">
+				<u-button v-if="!isOwn && !isInvalid" class="buy-btn" type="primary" color="#4674c9"
+					@click="showBuyModel()" :text="i18n.t('app.trade.buy.text')" />
+				<u-button v-if="isOwn" class="buy-btn" type="primary" color="#4674c9" @click="changePrice()"
+					:text="i18n.t('app.inventory.price_change')" />
+				<u-button v-if="isOwn" class="buy-btn" type="primary" color="#ad4c4c" @click="delist()"
+					:text="i18n.t('app.inventory.delist')" />
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config'
+	import i18n from '@/utils/locales/i18n';
+	import BaseItem from '@/components/game-item/index.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import StickerList from '@/components/game-item/StickerList.nvue';
+	
+	import ShopInfo from '@/components/shop/shop-detail/shop-info.nvue';
+	import {
+		marketItemApi,
+		marketItem2Api,
+		AddFavoriteApi,
+		RemoveFavoriteApi
+	} from '@/api/modules/market.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		OrderItemPurchaseApi,
+		OrderItemRemovedApi
+	} from '@/api/modules/shop/shop-product.js';
+	import{GetUserShopInfoApi} from '@/api/modules/shop/shop.js';
+	import {
+		getAppUserInfo
+	} from '@/utils/storage/modules/user.js';
+import {confirmPay } from '@/utils/order/productUtils.js'
+	export default {
+		components: {
+			BaseItem,
+			StickerList,
+			WearProgressBar,
+			ShopInfo,
+		},
+		data() {
+			return {
+				i18n,
+				schemas: [], // Object
+				asset: {}, // Array
+				user: {}, // Object
+				shop: {},
+				sell_id:null,
+				show: false,
+			}
+		},
+		async onLoad(options) {
+		  try {
+		    this.asset = JSON.parse(decodeURIComponent(options.asset || '{}'));
+		    this.schemas = JSON.parse(decodeURIComponent(options.schemas || '{}'));
+		    this.user = JSON.parse(decodeURIComponent(options.user || '{}'));
+		    this.sell_id = options.sell_id;
+			
+		  } catch (e) {
+		    this.asset = {};
+		  }
+		console.log(this.asset)
+		  // 包装 csgoAsset
+		  const src = this.asset;
+		  console.log(src)
+		  this.asset.csgoAsset = {
+		    paint_seed:  src.paintSeed  ?? this.asset.paint_seed,
+		    paint_index: src.paintIndex ?? this.asset.paint_index,
+		    paint_wear:  src.paintWear  ?? this.asset.paint_wear,
+		    percentage:  src.percentage  ?? this.asset.percentage,
+		    phase:       src.phase       ?? this.asset.phase,
+		    tier:        src.tier        ?? this.asset.tier,
+		    fire_ice:    src.fire_ice    ?? this.asset.fire_ice
+		  };
+		
+		  // ✅ 正确获取店铺信息
+		  const res = await GetUserShopInfoApi({ uuid: options.uuid });
+		  this.shop = res.datas ?? {}; 
+		},
+		methods: {
+			/**
+			 * 购买
+			 * @param {Object} item
+			 */
+			async showBuyModel() {
+			  if (!isLogin()) {
+			    uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+			    return;
+			  }
+			  			  
+			  const payText = this.i18n.t("app.trade.buy.pay_text_2");
+			  const payText2 = this.i18n.t("app.trade.buy.pay_text_3");
+			  const totalAmount = `$ ${this.asset.price}`; 
+			  const floorAmount = Math.floor(this.asset.price);
+			  const content = `${payText} ${floorAmount}\n${payText2} \n`;
+			  const payRes = await confirmPay(totalAmount,content);
+			  if(payRes){
+			    this.buySubmit();
+			  }
+			},
+			async buySubmit() {
+				try {
+					uni.showLoading({
+						title: i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					const res = await OrderItemPurchaseApi({
+						id: this.asset.id,
+						price: this.asset.price,
+						appid: this.asset.app_id,
+					});
+					console.log(res);
+					uni.hideLoading();
+					if (res.datas.includes('Steam issue') || res.datas.includes('Inventory privacy')) {
+						let msg = this.i18n.t('app.inventory.message.privacy') + getAppUserInfo().config.nickname
+						uni.showModal({
+							content: res.datas.includes('Steam issue') ? this.i18n.t(
+								'app.steam.message.trading_restrictions') : msg,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							
+						})
+						return;
+					}
+					if (res.code == 0) {
+						uni.$emit('product-detail-reload');
+						uni.$u.toast(res.datas);
+						uni.navigateBack();
+						return;
+					}
+
+				} catch (error) {
+					uni.hideLoading();
+					console.log(error);
+					//TODO handle the exception
+				}
+			},
+		
+			/**
+			 * 改价饰品
+			 */
+			changePrice() {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+				let items = [];
+				this.asset.id = this.itemId;
+				items.push(this.asset);
+				uni.$u.route({
+					url: '/pages/shop/order-manage/change-price',
+					params: {
+						list: encodeURIComponent(JSON.stringify(items)),
+						schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+						mode: 'sell'
+					}
+				})
+			},
+			/**
+			 * 下架
+			 */
+			async delist() {
+				try {
+					if (!isLogin()) {
+						uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+						return;
+					}
+					uni.showModal({
+						title: this.i18n.t('app.system.tips.title'),
+						content: this.i18n.t('app.inventory.message.confirm_delist'),
+						confirmText: this.i18n.t('app.common.confirm'),
+						cancelText: this.i18n.t('app.common.cancel'),
+						success: async (res) => {
+							if (res.confirm) {
+								uni.showLoading({
+									title: this.i18n.t('app.system.tips.please_wait'),
+									mask: true
+								});
+								const ids = [];
+								ids.push(this.itemId)
+								const res = await OrderItemRemovedApi({
+									ids: ids
+								});
+								uni.hideLoading();
+								if (res.code == 0) {
+									uni.navigateBack();
+									uni.$u.toast(this.i18n.t('app.system.message.success'));
+									uni.$emit('product-detail-reload');
+								} else {
+									uni.$u.toast(res.datas)
+								}
+							}
+						}
+					});
+				} catch (error) {
+					uni.hideLoading();
+					console.log(error)
+					//TODO handle the exception
+				}
+			},
+			async addProduct() {
+				const res = await AddFavoriteApi({
+					itemId: this.sell_id ? this.sell_id : this.asset.id,
+					appId: this.asset.app_id
+
+				});
+				if (res.code == 0) {
+					uni.$u.toast(i18n.t('app.user.collection.message.success'));
+					this.asset.favorited = true;
+					uni.$emit('product-detail-reload');
+				}
+			},
+			async removeProduct() {
+				const res = await RemoveFavoriteApi(this.sell_id ? this.sell_id : this.asset.id);
+				
+				if (res.code == 0) {
+					uni.$u.toast(i18n.t('app.user.collection.uncollect_success'));
+					this.asset.favorited = false;
+					uni.$emit('product-detail-reload');
+				}
+			},
+			itemSet() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.itemSet) {
+					return bean.tags.itemSet;
+				}
+				return '';
+			},
+			toItemTemplate() {
+				uni.$u.route('/pages/product-market/product-template-detail', {
+					schema_id: this.asset.schema_id,
+					appid: this.asset.app_id
+				});
+			},
+			exterior() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.exterior) {
+					return bean.tags.exterior;
+				}
+				return '';
+			},
+			quality() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.quality) {
+					return bean.tags.quality;
+				}
+				return '';
+			},
+			rarity() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.rarity) {
+					return bean.tags.rarity;
+				}
+				return '';
+			},
+			type() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.type) {
+					return bean.tags.type;
+				}
+				return '';
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync()
+			},
+			routeBack() {
+				uni.navigateBack();
+			}
+		}
+	}
+</script>
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.page-list {
+		flex: 1;
+		/* 占满剩余高度 */
+		background-color: $app-background-black;
+	}
+
+	.show-container {
+		//flex:0.5;
+		background-color: $app-background-black;
+	}
+
+
+	.show-header-nav {
+		height: 60px;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 20rpx;
+		background-color: rgb(62, 62, 62);
+
+		.nav-text {
+			width: 500rpx;
+			color: $app-background;
+			lines: 1;
+			text-overflow: ellipsis;
+			font-size: $font-size-md;
+		}
+
+		.market-text {
+			color: $app-background;
+			font-size: $font-size-md;
+		}
+
+		.collect-icon {
+			margin-left: 10rpx;
+		}
+
+		.right {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-end;
+		}
+	}
+
+	.item-image-wrap {
+		position: relative;
+		width: 750rpx;
+		background-color: #353535;
+
+		.image {
+			width: 690rpx;
+			height: 414rpx;
+		}
+
+		.item-sticker {
+			position: absolute;
+			right: 30rpx;
+			bottom: 5rpx;
+		}
+	}
+
+	.item-sticker-list {
+		width: 750rpx;
+		padding: 20rpx;
+		margin-top: 20rpx;
+		background-color: rgb(44, 44, 46);
+
+		.sticket-item {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			margin-bottom: 20rpx;
+			align-items: center;
+
+			.sticket-image {
+				width: 80rpx;
+				height: 80rpx;
+				background-color: #262626;
+				padding: 10rpx;
+			}
+		}
+
+		.text {
+			color: $app-text-thirdly;
+			font-size: $font-size-sm;
+			padding: 5rpx 10rpx;
+		}
+	}
+
+	.item-market-name {
+		width: 750rpx;
+		padding: 20rpx;
+		font-size: 30rpx;
+		color: #e7e7e7;
+		font-weight: bold;
+		background-color: rgb(44, 44, 46);
+	}
+
+	.item-csgo-wrap {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		background-color: rgb(44, 44, 46);
+	}
+
+	.item-phase {
+		padding: 20rpx;
+		padding-right: 0rpx;
+		font-size: $font-size-sm;
+		color: $app-text-thirdly;
+		font-weight: bold;
+		background-color: rgb(44, 44, 46);
+		border-bottom: 1rpx solid rgb(53, 53, 56);
+	}
+
+
+	.item-paint-seed {
+
+		padding: 20rpx;
+		padding-right: 0rpx;
+		font-size: $font-size-sm;
+		color: $app-text-thirdly;
+		font-weight: bold;
+		background-color: rgb(44, 44, 46);
+		border-bottom: 1rpx solid rgb(53, 53, 56);
+	}
+
+	.item-abradability {
+		width: 750rpx;
+		font-size: $font-size-sm;
+		color: $app-text-thirdly;
+		font-weight: bold;
+		padding-bottom: 20rpx;
+	}
+
+	.abradability-wrap {
+		width: 750rpx;
+		padding: 20rpx;
+		background-color: rgb(44, 44, 46);
+	}
+
+	.item-property-description {
+		width: 750rpx;
+		padding: 20rpx;
+		background-color: rgb(44, 44, 46);
+		margin-top: 20rpx;
+
+		.title {
+			font-size: $font-size-md;
+			color: $app-text-disabled;
+			font-weight: bold;
+			padding-bottom: 10rpx;
+		}
+
+		.item-tags {
+			display: flex;
+			flex-direction: row;
+			padding-top: 10rpx;
+
+			.label {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				margin-right: 10rpx;
+			}
+		}
+
+		.item-exterior {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			padding-top: 10rpx;
+		}
+	}
+
+	.bottom-box {
+		width: 750rpx;
+		height: 100rpx;
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		background: $app-background;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 20rpx 20rpx;
+
+		.price {
+			font-size: $font-size-md;
+			color: $app-danger-dark;
+			font-weight: 300;
+			margin-right: 10rpx;
+			font-weight: bold;
+		}
+
+		.right {
+			display: flex;
+			flex-direction: row;
+			align-items: flex-end;
+			justify-content: center;
+		}
+
+		.buy-btn {
+			height: 60rpx;
+			margin-left: 10rpx;
+		}
+	}
+</style>

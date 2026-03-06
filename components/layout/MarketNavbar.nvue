@@ -1,0 +1,92 @@
+<!-- 市场导航栏 -->
+<template>
+	<u-tabs :current="currentTab" :list="list" @click="handleTabClick" lineWidth="0" lineHeight="0"
+		:activeStyle="activeStyle" :inactiveStyle="inactiveStyle" :style="style">
+		<view slot="right" class="right-slot">
+			<game-switcher @gameChange="appidChange($event)"></game-switcher>
+		</view>
+	</u-tabs>
+</template>
+
+<script>
+	import GameSwitcher from '@/components/layout/GameSwitcher.nvue'
+	import {
+		isLogin
+	} from '@/services/user.js'
+	export default {
+		model: {
+			prop: "modelValue",
+			event: "input",
+		},
+		props: {
+			modelValue: {
+				require: true
+			},
+			list: {
+				type: Array,
+				default: () => []
+			},
+		},
+		components: {
+			GameSwitcher,
+		},
+		data() {
+			return {
+				isLogin: isLogin(),
+				currentTab: 0,
+				systemInfo: null,
+				inactiveStyle: {
+					fontSize: '36rpx',
+					color: '#616161',
+				},
+				activeStyle: {
+					fontSize: '36rpx',
+					color: '#212121',
+					fontWeight: 600,
+				},
+				style: {
+					paddingTop: '',
+					borderBottom:'1rpx solid #E0E0E0',
+					backgroundColor:'#FFFFFF'
+				}
+			}
+		},
+		watch: {
+			modelValue(val, oldVal) {
+				if (val != oldVal) {
+					this.currentTab = val;
+				}
+			},
+		},
+		created() {
+			this.systemInfo = uni.getSystemInfoSync();
+			this.style.paddingTop = this.systemInfo.statusBarHeight + 'px';
+		},
+		methods: {
+			handleTabClick(e) {
+				this.currentTab = e.index;
+				this.$emit('change', e);
+			},
+			appidChange() {
+				this.$emit('appid');
+			},
+			toShopSetting() {
+				uni.$u.route('/pages/shop/shop-manage/setting');
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.right-slot {
+		padding: 0 8px;
+		flex-direction: row;
+		align-items: center;
+
+		.shop-setting {
+			width: 56rpx;
+			height: 56rpx;
+			margin-right: 10rpx;
+		}
+	}
+</style>

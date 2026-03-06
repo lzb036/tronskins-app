@@ -1,0 +1,194 @@
+<template>
+	<view class="item-container" :style="getWidthStyle()" >
+		<image class="item-img-bg" :src="getImageStatic()" :style="getWidthStyle()"></image>
+		<image :src="imageUrl" :style="getBorderStyle()"></image>
+		<text class="item-num" v-if="num > 0">x {{num}}</text>
+		<text class="item-exterior" :style="getExteriorBg()"
+			v-if="exterior&&exterior.localized_name">{{exterior.localized_name}}</text>
+		<text class="item-percentage" v-if="percentage">{{percentage}}%</text>
+		<text class="item-phase" :style="getPhaseStyle()" v-if="phase">{{phase}}</text>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		itemImage
+	} from './itemUtlis.js';
+	export default {
+		props: {
+			imageUrl: {
+				type: String,
+				default: '',
+			},
+			num: {
+				type: Number,
+				default: 0,
+			},
+			exterior: {
+				type: Object,
+				default: {},
+			},
+			bg: {
+				type: String,
+				default: 'b0c3d9',
+			},
+			width: {
+				type: Number,
+				default: 120,
+			},
+			height: {
+				type: Number,
+				default: 0,
+			},
+			appid: {
+				type: String | Number,
+				default: 730
+			},
+			schema_id: {
+				type: String | Number,
+				default: ''
+			},
+			phase: {
+				type: String,
+				default: ''
+			},
+			percentage: {
+				type: String,
+				default: ''
+			},
+			clickable: {
+				type: Boolean,
+				default: true
+			}
+		},
+		data() {
+			return {}
+		},
+		created() {
+			this.height = this.height ? this.height : this.width * 0.6;
+		},
+		methods: {
+			getWidthStyle() {
+				return {
+					width: this.width + 'rpx',
+					height: this.height + 'rpx'
+				}
+			},
+			getPhaseStyle() {
+				if (this.percentage) {
+					return {
+						left: '100rpx'
+					}
+				}
+				return {
+					left: '60rpx'
+				}
+			},
+			/**
+			 * 获取饰品外观的背景色
+			 * @param {Object} item - 饰品对象
+			 * @returns {Object|null} - 背景色样式对象，如果不存在外观则返回 null
+			 */
+			getExteriorBg() {
+				if (this.exterior?.color) {
+					return {
+						backgroundColor: `#${this.exterior.color}`,
+					};
+				}
+				return null;
+			},
+			getBorderStyle() {
+				if (getGameType() == 570) {
+					if (this.quality?.color == 'D2D2D2') {
+						this.quality.color = 'FFFFFF';
+					}
+					return {
+						'width': this.width + 'rpx',
+						'height': this.height + 'rpx',
+						'border': `2px solid #${this.quality?.color || 'FFFFFF'}`,
+					}
+				}
+				return {
+					'width': this.width * 0.8 + 'rpx',
+					'height': this.height * 0.8 + 'rpx',
+					'margin': (this.width - (this.width * 0.8)) / 2 + 'rpx',
+				}
+			},
+			/**
+			 * 获取饰品图片的静态地址
+			 * @param {string} imagePath - 图片路径
+			 * @returns {string} - 完整的图片地址
+			 */
+			getImageStatic() {
+				return `/static/image/game/item/${this.bg}.png`;
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.item-container {
+		position: relative;
+	}
+
+	.item-img-bg {
+		opacity: 0.9;
+		position: absolute;
+		left: 0;
+		top: 0;
+	}
+
+	.item-num {
+		width: 50rpx;
+		height: 25rpx;
+		line-height: 25rpx;
+		font-size: $font-size-xs;
+		color: $app-background;
+		text-align: center;
+		position: absolute;
+		right: 0;
+		bottom: 0;
+		background-color: $app-background-black;
+		opacity: 0.6;
+	}
+
+	.item-exterior {
+		color: $app-background;
+		font-size: $font-size-xxs;
+		background-color: $app-background-black;
+		opacity: 0.8;
+		padding: 5rpx;
+		position: absolute;
+		left: 0;
+		top: 0;
+	}
+
+	.item-percentage {
+		color: $app-background;
+		font-size: $font-size-xxs;
+		background-color: $app-text-primary;
+		opacity: 0.8;
+		text-align: center;
+		position: absolute;
+		left: 60rpx;
+		top: 0;
+		opacity: 0.8;
+		padding: 5rpx;
+	}
+
+	.item-phase {
+		color: $app-background;
+		font-size: $font-size-xxs;
+		background-color: $app-icon-active;
+		opacity: 0.8;
+		padding: 5rpx;
+		position: absolute;
+		top: 0;
+	}
+</style>

@@ -1,0 +1,93 @@
+<!-- 钱包列 -->
+<template>
+	<view class="money-container">
+		<view class="wallet-item" @click="route(item)" v-for="item in walletItems" :key="item.field">
+			<text class="label">
+				{{ formatValue(userInfo, item.field,item.formatter) }}
+			</text>
+			<text class="name">{{ item.label }}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import config from '@/config/index.js'
+	import {
+		isLogin
+	} from '@/services/user.js'
+	export default {
+		props: ['userInfo'],
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				walletItems: [{
+						field: 'fund.balance',
+						label: i18n.t('app.user.wallet.balance'),
+						path: '/pages/user/user-assets/wallet/index',
+					},
+					{
+						field: 'fund.gift',
+						label: i18n.t('app.user.wallet.gift'),
+						path: '/pages/user/user-assets/wallet/index',
+					},
+					{
+						field: 'fund.integral',
+						label: i18n.t('app.user.integral.unit'),
+						path: '/pages/user/user-assets/integral/index',
+					}
+				],
+			}
+		},
+		methods: {
+			// 统一值格式化方法
+			formatValue(source, fieldPath) {
+				try {
+					const value = fieldPath.split('.').reduce((obj, key) => obj[key], source);
+					return value !== undefined ? !fieldPath.includes('integral') ? this.currencySymbol + ' ' + value :
+						value : '-';
+				} catch {
+					return '-'
+				}
+			},
+			route(item) {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return
+				}
+				uni.$u.route(item.path);
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../theme.scss";
+
+	.money-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		padding: 40rpx 20rpx;
+		background-color: $app-background-blue-dark;
+	}
+
+	.wallet-item {
+		width: 236rpx;
+
+		.name {
+			text-align: center;
+			color: $app-background;
+			font-size: $font-size-md;
+			padding-top: 10rpx;
+		}
+
+		.label {
+			text-align: center;
+			color: $app-background;
+			font-size: $font-size-md;
+			font-weight: bold;
+		}
+	}
+</style>

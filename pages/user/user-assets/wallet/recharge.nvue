@@ -1,0 +1,362 @@
+<!-- 充值 -->
+<template>
+	<view class="wallet-recharge-container">
+		<u-navbar :title="i18n.t('app.user.recharge.title')" :autoBack="true" placeholder bgColor="#6471bf"
+			left-icon-color="#fff" :titleStyle="{color:'#fff'}">
+			<view slot="right">
+				<text class="recharge-record" @click="toRecord()">{{i18n.t('app.user.wallet.recharge_record')}}</text>
+			</view>
+		</u-navbar>
+		 <scroller style="flex: 1;">
+		<view class="header">
+			<text class="header-ustd-value">{{currencySymbol + ' ' + getBalance()}}</text>
+			<text class="header-ustd-label">{{i18n.t('app.user.wallet.account')}}</text>
+		</view>
+		<u-tabs :current="currentTab" @click="handleTabClick" :list="tabs" :activeStyle="{
+				fontSize:'28rpx',
+			    color: '#4a4a4a',
+			}" :inactiveStyle="{
+				fontSize:'28rpx',
+			    color: '#4a4a4a',
+			}" itemStyle="padding:10rpx 20rpx;height: 34px;" lineHeight="2">
+		</u-tabs>
+		<swiper :current="currentTab" :duration="300" @change="handleSwiperChange" style="height: 500px;">
+			<swiper-item>
+				<u-loading-page loading-text="loading..." :loading="loading"></u-loading-page>
+				<view class="usdt-container" v-if="walletInfo">
+					<uv-qrcode v-if="qrcodeImage" ref="qrcode" size="200px" :value="qrcodeImage"></uv-qrcode>
+
+					<u-count-down :time="walletInfo.remainTime * 1000" format="mm:ss"
+						@finish="refreshQrCode()"></u-count-down>
+					<view class="wallet-address-box" @click="copyAddress()">
+						<text
+							class="wallet-address-label">{{i18n.t('app.user.recharge.payment_collection_address')}}</text>
+						<text class="wallet-address-value">{{walletInfo.walletAddress}}</text>
+						<u-icon name="file-text" color="#888"></u-icon>
+					</view>
+					<view class="divider"></view>
+					<text class="tips-text">1.{{i18n.t('app.user.recharge.tips')}}</text>
+					<text class="tips-text">2.{{i18n.t('app.user.recharge.tips_4')}}</text>
+					<text class="tips-text">3.{{i18n.t('app.user.recharge.tips_5')}}</text>
+					<text class="tips-text">4.{{i18n.t('app.user.recharge.tips_2')}}</text>
+					<text class="tips-text">5.{{i18n.t('app.user.recharge.tips_3')}}</text>
+				</view>
+			</swiper-item>
+			<swiper-item>
+				<view class="recharge-card-container">
+					<view class="wrap">
+						<text class="recharge-card-label">{{i18n.t('app.user.wallet.secret_key')}}</text>
+						<input class="recharge-card-input" v-model="secretKey" type="text"
+							:placeholder="i18n.t('app.user.recharge.secretKey_placeholder')"></input>
+					</view>
+					<u-button class="recharge-card-btn" type="primary" :text="i18n.t('app.common.confirm')"
+						@click="chargeCardSubmit()"></u-button>
+					<view class="divider"></view>
+					<text class="tips-text">1.{{i18n.t('app.user.recharge.tips_2')}}</text>
+					<text class="tips-text">2.{{i18n.t('app.user.recharge.tips_3')}}</text>
+				</view>
+			</swiper-item>
+		</swiper>
+		</scroller>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import config from '@/config/index.js'
+	import {
+		userInfoApi,
+		AssignOfficialWalletApi,
+		OfficialWalletQRCodeApi,
+		ConsumeChargeCardApi
+	} from '@/api/modules/user.js'
+	import {
+		setAppUserInfo,
+	} from '@/utils/storage/modules/user.js'
+	import uvQrcode from '@/uni_modules/uv-qrcode/components/uv-qrcode/uv-qrcode.vue'
+	
+	export default {
+		components:{uvQrcode},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				currentTab: 0,
+				tabs: [{
+						name: i18n.t("app.user.wallet.usdt"),
+						value: "usdt"
+					},
+					{
+						name: i18n.t("app.user.recharge.card"),
+						value: "card"
+					}
+				],
+				userInfo: null,
+				secretKey: '',
+				qrcodeImage: null,
+				walletInfo: null,
+				loading: true
+			}
+		},
+		created() {
+			this.getUserInfo();
+			this.getWalletQRCode();
+			this.getWalletAssign();
+			// this.getWalletRefrsh();
+		},
+		methods: {
+			/**
+			 * 确认充值卡密
+			 */
+			async chargeCardSubmit() {
+				if (!this.secretKey || this.secretKey.length != 32) {
+					return uni.$u.toast(i18n.t('app.user.recharge.secretKey_placeholder'));
+				}
+				try {
+					const res = await ConsumeChargeCardApi({
+						password: this.secretKey
+					});
+					if (res.code == 0) {
+						this.userInfo = null;
+						this.getUserInfo();
+						uni.$u.toast(this.i18n.t('app.user.recharge.message.success'));
+					} else {
+						uni.$u.toast(res.datas);
+					}
+				} catch (e) {
+
+				}
+			},
+			/**
+			 * 倒计时结束，刷新二维码和钱包地址
+			 */
+			refreshQrCode() {
+				this.loading = true;
+				this.userInfo = null;
+				this.getWalletQRCode();
+				this.getWalletAssign();
+			},
+			/**
+			 * 复制
+			 */
+			copyAddress() {
+				uni.setClipboardData({
+					data: this.walletInfo.walletAddress,
+					success: function() {
+						uni.$u.toast(i18n.t('app.system.message.copy_success'));
+					}
+				});
+			},
+			/**
+			 * 获取充值二维码
+			 */
+			async getWalletQRCode() {
+				const res = await OfficialWalletQRCodeApi();
+				if (res.code == 0) {
+					this.qrcodeImage = res.datas.walletAddress ? res.datas.walletAddress : '';
+				
+				}
+			},
+			/**
+			 * 获取钱包地址
+			 */
+			async getWalletAssign() {
+				try {
+					const res = await AssignOfficialWalletApi();
+					this.loading = false;
+					if (res.code == 0) {
+						this.walletInfo = res.datas;
+					}
+				} catch (e) {
+					this.loading = false;
+				}
+			},
+			getBalance() {
+				if (this.userInfo && this.userInfo.fund) {
+					return this.userInfo.fund.balance ? this.userInfo.fund.balance : '0';
+				}
+				return '0'
+			},
+			async getUserInfo() {
+				try {
+					const res = await userInfoApi();
+					if (res.code == 0) {
+						this.userInfo = res.datas;
+						setAppUserInfo(res.datas);
+					} else {
+						this.userInfo = null;
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			toRecord() {
+				uni.$u.route('/pages/user/user-assets/wallet/fund-recharge');
+			},
+			navigateBack() {
+				uni.navigateBack();
+			},
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			handleTabClick(e) {
+				this.currentTab = e.index;
+			},
+			/**
+			 * 滑动切换tabs
+			 * @param {Object} e
+			 */
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync()
+				return systemInfo;
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+
+	.wallet-recharge-container {
+		width: 750rpx;
+		flex: 1;
+		background-color: $app-background;
+	}
+
+	.recharge-record {
+		color: $app-background;
+		font-size: $font-size-sm;
+		text-align: right;
+	}
+
+	.divider {
+		width: 750rpx;
+		height: 1rpx;
+		padding: 10rpx 0;
+		border-top: 1rpx solid $app-surface;
+	}
+
+	.tips-text {
+		width: 750rpx;
+		font-size: $font-size-sm;
+		color: $app-text-thirdly;
+		padding: 8rpx 20rpx;
+	}
+
+	.header {
+		width: 750rpx;
+		height: 80px;
+		background: $app-background-blue;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 0 30rpx;
+
+		.header-ustd-label {
+			font-size: $font-size-sm;
+			color: $app-background;
+			padding-top: 20rpx;
+		}
+
+		.header-ustd-value {
+			font-size: $font-size-xl;
+			font-weight: bold;
+			color: $app-background;
+			padding-top: 20rpx;
+		}
+	}
+
+	.usdt-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+
+		.label {
+			width: 750rpx;
+			font-size: $font-size-md;
+			color: $app-text-thirdly;
+			text-align: center;
+		}
+
+		.qr-code {
+			width: 300rpx;
+			height: 300rpx;
+		}
+
+		.wallet-address-box {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+			padding-bottom: 20rpx;
+			margin-top: 10rpx;
+
+			.wallet-address-label {
+				font-size: $font-size-md;
+				color: $app-text-thirdly;
+				margin-right: 10rpx;
+			}
+
+			.wallet-address-value {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				padding: 10rpx 15rpx;
+				background-color: $app-surface;
+			}
+
+			.wallet-address-copy {
+				width: 30rpx;
+				height: 30rpx;
+				background-color: $app-surface;
+			}
+		}
+	}
+
+	.recharge-card-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+
+		.wrap {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			margin-top: 50rpx;
+			margin-bottom: 30rpx;
+
+			.recharge-card-label {
+				width: 120rpx;
+				font-size: $font-size-md;
+				color: $app-text-thirdly;
+			}
+
+			.recharge-card-input {
+				width: 500rpx;
+				font-size: $font-size-md;
+				padding: 10rpx 15rpx;
+				border: 2rpx solid $app-surface;
+				border-radius: 5rpx;
+				color: $app-text-thirdly;
+			}
+		}
+
+		.recharge-card-btn {
+			width: 500rpx;
+			height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-md;
+			padding: 10rpx 0;
+			background: $app-link;
+			border: 1rpx solid $app-link;
+			margin-bottom: 20rpx;
+		}
+	}
+</style>

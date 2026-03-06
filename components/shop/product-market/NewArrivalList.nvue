@@ -1,0 +1,122 @@
+<!-- 最新上架组件 -->
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<waterfall-refresh :dataList="list" :total="total" height="44" @refresh="refresh()" @loadMore="loadMore()">
+			<template #header>
+				<u-notice-bar v-if="textMsg" :text="textMsg" @click="toNotify()" @close="closeNotify()" speed="30"
+					mode="closable" bgColor="#3F67B4" color="#fff"></u-notice-bar>
+				<sort-type-filter :appid="appid" @filter="onFilter"></sort-type-filter>
+			</template>
+			<template #item="{ item }">
+				<item-template :key="item.id" :item="item" width="355"></item-template>
+			</template>
+		</waterfall-refresh>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import SortTypeFilter from '@/components/layout/SortTypeFilter.nvue';
+	import ItemTemplate from '@/components/game-item/ItemTemplate.nvue';
+	import WaterfallRefresh from '@/components/layout/waterfall-refresh.nvue';
+	import {
+		marketNewsApi,
+		AppNoticeApi
+	} from '@/api/modules/market.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		components: {
+			SortTypeFilter,
+			ItemTemplate,
+			WaterfallRefresh,
+		},
+		data() {
+			return {
+				appid: getGameType(),
+				i18n: i18n,
+				list: [],
+				show: false,
+				isLoading: false,
+				pager: {
+					page: 1,
+					pageSize: 10,
+				},
+				total: null,
+				textMsg: '',
+				id: ''
+			}
+		},
+		created() {
+			this.refresh();
+			this.getNoticeMessage();
+		},
+		methods: {
+			
+			  onFilter({ itemName, tags, sortField, sortAsc }) {
+			    const query = {
+			      itemName: itemName || '',
+			      tags: encodeURIComponent(JSON.stringify({
+			        ...tags,
+			        field: sortField || 'price',
+			        asc: sortAsc !== undefined ? sortAsc : false
+			      }))
+			    };
+			
+			    uni.$u.route('/pages/product-market/index', query);
+			  },
+			async getNoticeMessage() {
+				const res = await AppNoticeApi();
+				this.textMsg = res.datas.title;
+				this.id = res.datas.id;
+			},
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			toNotify() {
+				if (!this.id) return;
+				uni.$u.route('/pages/notify-center/show', {
+					id: this.id
+				});
+			},
+			closeNotify() {
+				this.textMsg = undefined;
+				this.id = undefined;
+			},
+			async fetchMarketNews() {
+				const res = await marketNewsApi({
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize
+				});
+				if (res.datas) {
+					this.list = this.list.concat(res.datas);
+					this.total = this.list.length;
+				}
+			},
+			refresh() {
+				uni.$u.debounce(async () => {
+					try {
+						this.isLoading = true;
+						this.list = [];
+						this.pager.page = 1;
+						await this.fetchMarketNews();
+					} catch (error) {
+						//TODO handle the exception
+					} finally {
+						this.isLoading = false;
+					}
+				}, 500);
+			},
+			loadMore() {
+				this.pager.page++;
+				this.fetchMarketNews();
+			}
+		}
+	}
+</script>

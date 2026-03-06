@@ -1,0 +1,236 @@
+<template>
+	<view class="exchange-list">
+		<view class="grid-container" v-if="list.length > 0">
+			<view v-for="(row, rowIndex) in list" :key="rowIndex" class="row">
+				<view class="item-container" v-for="(item, colIndex) in row" :key="colIndex"
+					:class="{active: activeIndex == item.index,drawbtn:item.index==-1,drawItem:item.index!=-1 }"
+					@click="drawClick(item)">
+					<template v-if="item.index==-1">
+						<text class="bold-label"
+							v-if="item.index">{{isLotteryRunning?item.drawingLabel:item.label}}</text>
+						<text class="points"
+							v-if="item.index==-1&&isLotteryRunning">{{ i18n.t('app.user.integral.drawing') }}</text>
+					</template>
+					<template v-else>
+						<image :class="item.index == 7?'thanks-img':'item-img'" v-if="item.image"
+							:src="`/static/image/lottery${item.image}`"></image>
+						<text :class="item.index == -1?'bold-label':'label'"
+							:style="getLabelStyle(item.index)" v-if="item.label">{{ item.label }}</text>
+					</template>
+				</view>
+			</view>
+		</view>
+		<!-- 	<uni-popup ref="ref_winning" @maskClick="close()">
+			<WinningPrize :prizeItem="prizeItem" @confirm="handleConfirm"></WinningPrize>
+		</uni-popup> -->
+	</view>
+</template>
+
+<script>
+	// import WinningPrize from "./winning-prize.nvue";
+	import {
+		integralLotteryListApi,
+		userIntegralLotteryApi
+	} from '@/api/modules/user.js'
+
+	export default {
+		props: {
+			integral: {
+				type: Number,
+				default: 0
+			}
+		},
+		components: {
+			// WinningPrize
+		},
+		data() {
+			return {
+				timer: null,
+				duration: 5000, // 抽奖持续5秒
+				activeIndex: null, // 选中的index
+				isLotteryRunning: false, // 是否正在抽奖
+				startTime: null, // 抽奖开始时间
+				prizeItem: null, // 中奖项
+				prizeData: null, //中奖奖品
+				list: []
+			}
+		},
+		mounted() {
+			this.getLotteryList();
+		},
+		methods: {
+			async drawClick(item) {
+				if (item.prizeNumber != -1) {
+					return;
+				}
+				if (this.isLotteryRunning && item.prizeNumber == -1) {
+					uni.$u.toast(this.i18n.t('app.user.integral.draw_underway'));
+					return;
+				}
+				uni.showLoading({
+					title: this.i18n.t('app.system.tips.in_preparation'),
+					icon: 'none'
+				})
+				const res = await userIntegralLotteryApi({
+					type: 1
+				});
+				// 从接口获取到中奖号码，没获取到，则抽奖不允许开始
+				// TODO 接口，扣除1000积分
+				if (!res.datas || res.code != 0) {
+					return;
+				}
+				uni.hideLoading();
+				this.reset();
+				this.prizeData = res.datas;
+				this.integral - 1000;
+				this.isLotteryRunning = true;
+				this.startTime = Date.now();
+				let random = Math.floor(Math.random() * 8); // 随机起点
+				this.activeIndex = random;
+				this.runLottery();
+				this.$emit('draw');
+			},
+			runLottery() {
+				const elapsedTime = Date.now() - this.startTime;
+				if (elapsedTime >= this.duration) {
+					clearInterval(this.timer);
+					this.isLotteryRunning = false;
+					if (!this.prizeItem) {
+						this.getWinningResults();
+					}
+					return;
+				}
+				const speed = this.calculateSpeed(elapsedTime);
+				this.timer = setTimeout(() => {
+					this.activeIndex = (this.activeIndex + 1) % 8;
+					this.runLottery();
+				}, speed);
+			},
+			calculateSpeed(time) {
+				const progress = time / this.duration;
+				if (progress < 0.3) {
+					return 200; // 慢
+				} else if (progress < 0.7) {
+					return 50; // 快
+				} else {
+					return 200; // 慢
+				}
+			},
+			getWinningResults() {
+				if (this.prizeData) {
+					this.prizeItem = this.prizeData;
+					this.$refs.ref_winning.open();
+					return;
+				}
+			},
+			async getLotteryList() {
+				const res = await integralLotteryListApi();
+				if(res.code != 0)return;
+				this.list = res.datas;
+			},
+			reset() {
+				this.duration = 5000;
+				this.activeIndex = null;
+				this.prizeIndex = null;
+				this.prizeItem = null;
+			},
+			handleConfirm() {
+				this.reset();
+				this.$refs.ref_winning.close();
+			},
+			getLabelStyle(index) {
+				if (![1, 4, 5, 7].includes(index)) {
+					return {
+						marginTop: '20rpx'
+					}
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	
+	.exchange-list {
+		width: 680rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx 0;
+		background: #f5c619;
+		border-radius: 20rpx;
+		border: 3rpx solid #fde386;
+
+		.grid-container {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+		}
+
+		.row {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+		}
+	}
+
+	.active {
+		border: 4rpx solid #fb7a03;
+	}
+
+	.drawbtn {
+		background: #fb7a03;
+		border: 1rpx solid #f6a722;
+	}
+
+	.drawItem {
+		background: #fef8e6;
+	}
+
+	.item-container {
+		width: 200rpx;
+		height: 200rpx;
+		display: flex;
+		flex-direction: column;
+		position: relative;
+		align-items: center;
+		justify-content: center;
+		border-radius: 20rpx;
+		padding: 20rpx 15rpx;
+		margin: 5rpx;
+
+		.item-img {
+			width: 140rpx;
+			height: 100rpx;
+		}
+
+		.thanks-img {
+			width: 110rpx;
+			height: 110rpx;
+		}
+
+		.label {
+			width: 170rpx;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			text-align: center;
+		}
+
+		.bold-label {
+			font-size: $font-size-lg;
+			font-weight: bold;
+			color: #fef8e6;
+			text-align: center;
+		}
+
+		.points {
+			font-size: $font-size-md;
+			color: #fef8e6;
+			text-align: center;
+			margin-top: 20rpx;
+			font-weight: bold;
+		}
+	}
+</style>

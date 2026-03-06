@@ -1,0 +1,351 @@
+<!-- 排序组件 -->
+<template>
+	<view>
+		<view class="search-container">
+			<view class="search-bar" @click="openMode($event)">
+				<u-icon class="scan-icon" color="#888" name="search" size="20"></u-icon>
+				<text class="label">{{marketName ? marketName : i18n.t('app.market.filter.search')}}</text>
+				<u-icon @click.stop="resetName($event)" v-if="marketName" class="close-icon" color="#888"
+					name="close-circle-fill" size="14"></u-icon>
+			</view>
+			<view class="search-price" @click="sortTime()">
+				<text class="search-price-text">{{i18n.t("app.market.filter.time")}}</text>
+				<image class="filter-price-icon"
+					:src="`/static/image/filter/sort-price-${ascTime ? 'up' : 'down'}.png`">
+				</image>
+			</view>
+			<image class="filter-icon" src="/static/image/filter/selector-icon.png" @click="goodsFilter()">
+			</image>
+			<u-popup :show="isType" @close="isType = false" mode="right">
+				<game-item-filter-rules v-if="appid==730" :itemNameBean="itemName" :tagsBean="tags" :mode="mode" :isStatus="isStatus" :hideModes="['price','app.market.filter.sort']"
+					@filter="filterMarket($event)"></game-item-filter-rules>
+				<tf2-game-item-filter-rules v-if="appid==440" :isStatus="isStatus" :hideModes="['price','sort']"
+					@filter="filterMarket($event)"></tf2-game-item-filter-rules>
+				<dota2-game-item-filter-rules v-if="appid==570" :isStatus="isStatus" :mode="mode" :hideModes="['app.market.filter.price_range','app.market.filter.sort']"
+					@filter="filterMarket($event)"></dota2-game-item-filter-rules>
+			</u-popup>
+		</view>
+		<u-popup :show="isSearch" @close="closeMode()" mode="center" safeAreaInsetTop>
+			<view class="overlay" v-if="isShowOverlay" @click="hideKeyboard()"></view>
+			<view class="filter-container"
+				:style="{width:'750rpx',height:getSystemInfo().windowHeight - getSystemInfo().statusBarHeight + 'px'}">
+				<view class="filter-search-header">
+					<u-icon class="filter-search-icon" color="#888" name="search" size="20"></u-icon>
+					<input @input="change" @focus="isShowOverlay=true" class="filter-search-input" type="text"
+						:focus="true" :placeholder="i18n.t('app.market.filter.search')" @confirm="enterkeySubmit"></input>
+					<text class="filter-search-cancel" @click="closeMode()">{{i18n.t('app.common.cancel')}}</text>
+				</view>
+				<text class="item-market-name" v-for="item in list" :key="item.id"
+					@click="marketNameSubmit(item)">{{item.market_name}}</text>
+				<view class="item-query-wrap" v-if="list.length == 0">
+					<text class="query-name" v-for="q in historyList" :key="q.market_name"
+						@click="marketNameSubmit(q)">{{q.market_name}}</text>
+				</view>
+			</view>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import GameItemFilterRules from '@/components/layout/GameItemFilterRules.nvue';
+	import tf2GameItemFilterRules from '@/components/layout/tf2/GameItemFilterRules.nvue';
+	import dota2GameItemFilterRules from '@/components/layout/dota2/GameItemFilterRules.nvue';
+	import {
+		MarketQueryItemNameApi
+	} from '@/api/modules/market.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		Storage
+	} from '@/utils/storage/index.js';
+	export default {
+		props: {
+			tags: {
+				type: Object,
+				default: {}
+			},
+			itemName: {
+				type: String,
+				default: ''
+			},
+			appid: {
+				type: Number || String,
+				default: 730
+			},
+			isStatus: { // 是否按订单状态筛选
+				type: Boolean,
+				default: false
+			}
+		},
+		components: {
+			GameItemFilterRules,
+			tf2GameItemFilterRules,
+			dota2GameItemFilterRules
+		},
+		data() {
+			return {
+				i18n: i18n,
+				isSearch: false,
+				isType: false,
+				ascTime: false,
+				marketName: '',
+				list: [],
+				historyList: this.getHistoryList(),
+				isShowOverlay: false
+			}
+		},
+		methods: {
+			hideKeyboard() {
+				this.isShowOverlay = false;
+				uni.hideKeyboard();
+			},
+			resetName(e) {
+				this.marketName = '';
+				this.$emit('keywords', '');
+			},
+			sortTime() {
+				this.ascTime = !this.ascTime;
+				this.$emit('ascTime', this.ascTime)
+			},
+			goodsFilter() {
+				this.isType = true;
+			},
+			getHistoryList() {
+				return Storage.memory.get('es_query_history') ? Storage.memory.get('es_query_history') : [];
+			},
+			filterMarket(obj) {
+				this.isType = false;
+				this.$emit('filterType', {
+					itemName: obj.itemName,
+					tags: obj.tags,
+					startTime: obj.startTime,
+					endTime: obj.endTime,
+					sortField:obj.sortField,
+					sortAsc:obj.sortAsc,
+					statusList:obj.statusList,
+				})
+			},
+			enterkeySubmit(e) {
+				let word = e.detail.value;
+				this.marketNameSubmit(word);
+			},
+			marketNameSubmit(item) {
+				this.isSearch = false;
+				if(!item.market_name){
+					item = {
+					    color: undefined,
+					    flag: true,
+					    id: undefined,
+					    market_name: item,
+					    schema_id: undefined
+					}
+				}
+				Storage.memory.set('es_query_history', this.prioritizeOrAdd(this.getHistoryList(), item));
+				this.marketName = item.market_name;
+				this.$emit('keywords', this.marketName);
+			},
+			openMode(e) {
+				if (!e.currentTarget.ref) {
+					this.isSearch = true;
+					this.list = [];
+					this.historyList = this.getHistoryList();
+				}
+			},
+			closeMode() {
+				this.list = [];
+				this.isSearch = false;
+				this.isShowOverlay = false;
+				uni.hideKeyboard();
+			},
+			prioritizeOrAdd(arr, target) {
+				// 查找目标数据的索引（根据实际需求调整比较逻辑）
+				const index = arr.findIndex(item => item.market_name == target.market_name);
+				if (index !== -1) {
+					// 存在：删除并插入到开头
+					const [existing] = arr.splice(index, 1);
+					arr.unshift(existing);
+				} else {
+					// 超过15则删除
+					if (arr.length >= 15) {
+						arr.splice(arr.length - 1, 1);
+					}
+					// 不存在：直接插入到开头
+					arr.unshift(target);
+				}
+				return arr;
+			},
+			async change(e) {
+				try {
+					const res = await MarketQueryItemNameApi({
+						appId: getGameType(),
+						keywords: e.detail.value
+					})
+					console.log('MarketQueryItemNameApi res:', res)
+					this.isShowOverlay = false;
+					if (res.code == 0) {
+						this.list = res.datas;
+					}
+				} catch (error) {
+					 console.error('MarketQueryItemNameApi error:', error) 
+					uni.hideLoading();
+					//TODO handle the exception
+				}
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../theme.scss";
+
+	.filter-container {
+		padding: 20rpx;
+		background-color: $app-background;
+
+		.filter-search-header {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-surface;
+			padding: 10rpx;
+
+			.filter-search-icon {
+				width: 50rpx;
+				height: 50rpx;
+			}
+
+			.filter-search-input {
+				width: 580rpx;
+				height: 50rpx;
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+			}
+
+			.filter-search-cancel {
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+			}
+		}
+
+		.item-query-wrap {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+			margin-top: 20rpx;
+			background-color: $app-background;
+
+			.query-name {
+				height: 40rpx;
+				font-size: $font-size-sm;
+				padding: 10rpx 20rpx;
+				background-color: $app-surface;
+				color: $app-text-thirdly;
+				border-radius: 5rpx;
+				margin: 5rpx;
+			}
+		}
+
+		.item-market-name {
+			width: 710rpx;
+			padding: 20rpx 0;
+			color: $app-text-thirdly;
+			font-size: $font-size-sm;
+			border-bottom: 1px solid $app-surface;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+	}
+
+	.search-container {
+		width: 750rpx;
+		height: 40px;
+		overflow: hidden;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+
+		.filter-icon {
+			width: 46rpx;
+			height: 40rpx;
+		}
+
+		.search-price {
+			width: 100rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.search-price-text {
+				color: $app-text-thirdly;
+				font-size: $font-size-md;
+			}
+
+			.filter-price-icon {
+				width: 30rpx;
+				height: 30rpx;
+			}
+		}
+
+		.search-bar {
+			width: 560rpx;
+			height: 62rpx;
+			display: flex;
+			flex-direction: row;
+			border-radius: 3rpx;
+			align-items: center;
+			justify-content: center;
+			padding: 10rpx;
+			margin: 20rpx 14rpx 20rpx 10rpx;
+			background: $app-surface-elevated;
+			position: relative;
+
+			.scan-box {
+				width: 70rpx;
+				height: 62rpx;
+				position: absolute;
+				right: 0rpx;
+				top: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 10rpx 15rpx;
+			}
+
+			.scan-icon {
+				position: absolute;
+				left: 20rpx;
+			}
+
+			.close-icon {
+				position: absolute;
+				right: 20rpx;
+			}
+
+			.label {
+				left: 70rpx;
+				padding-top: 2rpx;
+				position: absolute;
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+			}
+		}
+	}
+
+	.overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0);
+		z-index: 9999;
+	}
+</style>

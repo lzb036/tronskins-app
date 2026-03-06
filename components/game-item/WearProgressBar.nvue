@@ -1,0 +1,96 @@
+<template>
+	<view class="progress-box">
+		<view class="progress-bar" :style="getWidth(width)">
+			<view class="factory-new" :style="getWidth(newWidth)"></view>
+			<view class="slightly-worn" :style="getWidth(wornWidth)"></view>
+			<view class="battle-hardened" :style="getWidth(hardenedWidth)"></view>
+			<view class="dilapidated" :style="getWidth(dilapidatedWidth)"></view>
+			<view class="battle-scarred" :style="getWidth(battleWidth)"></view>
+		</view>
+		<view class="active" :style="getPaintWear()"></view>
+	</view>
+</template>
+<script>
+	export default {
+		props: ['paintWear', 'width'],
+		data() {
+			return {
+				newWidth: this.width * 0.07,
+				wornWidth: this.width * 0.08,
+				hardenedWidth: this.width * 0.23,
+				dilapidatedWidth: this.width * 0.07,
+				battleWidth: this.width * 0.65,
+			}
+		},
+		created() {
+		},
+		methods: {
+			getWidth(width) {
+				return {
+					width: width + 'rpx'
+				};
+			},
+			/**
+			 * 磨损度规则
+			 * 崭新出厂: 0-0.07
+			 * 略有磨损: 0.07-0.15
+			 * 久经沙场: 0.15-0.38
+			 * 破损不堪: 0.38-0.45
+			 * 战痕累累:0.45-0.80
+			 */
+			getPaintWear() {
+				return {
+					left: (this.paintWear * this.width) + 'rpx',
+				};
+			}
+		}
+
+	}
+</script>
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.progress-box {
+		position: relative;
+
+		.active {
+			border-right: 4rpx solid transparent;
+			border-left: 4rpx solid transparent;
+			border-top: 20rpx solid $app-background;
+			color: $app-background;
+			position: absolute;
+			left: 0;
+			bottom: 4rpx;
+		}
+	}
+
+	.progress-bar {
+		height: 10rpx;
+		display: flex;
+		flex-direction: row;
+
+		.factory-new {
+			height: 10rpx;
+			background-color: #008000;
+		}
+
+		.slightly-worn {
+			height: 10rpx;
+			background-color: #5cb85c;
+		}
+
+		.battle-hardened {
+			height: 10rpx;
+			background-color: #f0ad4e;
+		}
+
+		.dilapidated {
+			height: 10rpx;
+			background-color: #d9534f;
+		}
+
+		.battle-scarred {
+			height: 10rpx;
+			background-color: #993a38;
+		}
+	}
+</style>

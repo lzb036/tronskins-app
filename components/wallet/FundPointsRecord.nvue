@@ -1,0 +1,131 @@
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<list-refresh :dataList="list" :total="list.length" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<view class="fund-flow-item">
+					<view class="flow-header">
+						<text class="flow-number">{{i18n.t('app.trade.order.details') + ':' + item.id}}</text>
+						<text class="flow-time">{{createTime(item)}}</text>
+					</view>
+					<view class="flow-wrap">
+						<text class="flow-type-name"
+							:style="{color:item.type == 3 ? 'red' : 'green'}">{{item.typeName}}</text>
+						<text class="flow-amount"
+							:style="{color:item.type == 3 ? 'red' : 'green'}">{{(item.type == 3 ? '-' : '+') + item.value}}</text>
+					</view>
+					<text class="flow-total">{{item.changedIntegral}}</text>
+				</view>
+			</template>
+		</list-refresh>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import {
+		GetIntegralRecordApi
+	} from '@/api/modules/user.js';
+
+	export default {
+		components: {
+			ListRefresh
+		},
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+				pager: {
+					page: 1,
+					pageSize: 20,
+				},
+				isLoading: false,
+			}
+		},
+		mounted() {
+			this.getQueryList();
+		},
+		methods: {
+			createTime(item) {
+				return uni.$u.timeFormat(item.createTime, 'yyyy-mm-dd hh:MM:ss');
+			},
+			async getQueryList() {
+				let params = {
+					page: this.pager.page,
+					pageSize: this.pager.pageSize
+				}
+				const res = await GetIntegralRecordApi(params);
+				if (res.code == 0) {
+					this.list = this.list.concat(res.datas.list);
+				}
+			},
+			async refresh() {
+				try {
+					this.isLoading = true;
+					this.list = [];
+					this.pager.page = 1;
+					await this.getQueryList();
+				} catch (e) {
+
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getQueryList();
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.fund-flow-item {
+		width: 750rpx;
+	}
+	
+	.flow-header {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		background-color: $app-surface;
+		padding: 15rpx 20rpx;
+	
+		.flow-number {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+	
+		.flow-time {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+	}
+	
+	.flow-wrap {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		background-color: $app-background;
+		padding: 10rpx 20rpx;
+	
+		.flow-type-name {
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+		}
+	
+		.flow-amount {
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			font-weight: bold;
+		}
+	}
+	
+	.flow-total {
+		padding: 10rpx 20rpx;
+		font-size: $font-size-md;
+		color: $app-text-primary;
+		text-align: right;
+	}
+</style>

@@ -1,0 +1,289 @@
+<!-- 市场饰品模板 -->
+<template>
+	<view class="item-container" :style="{width:width + 'rpx'}" @click="toDetail()">
+		<view class="item-row" :style="getWidthStyle()">
+			<image class="item-img-bg" :src="getImageBg()" :style="getWidthStyle()"></image>
+			<image class="item-img" :src="item.image_url" :style="getBorderStyle()"></image>
+			<view class="item-value" v-if="exterior">
+				<text class="item-exterior" :style="getExteriorBg()"
+					v-if="exterior.localized_name">{{exterior.localized_name}}</text>
+				<text v-if="item.cd" class="cooling-time">{{item.cd}}</text>
+				<text v-if="item.paintSeed" class="paint-seed">{{item.paintSeed}}</text>
+				<text v-if="item.phase" class="paint-seed">{{item.phase}}</text>
+			</view>
+			<text class="item-quality" v-if="isQualityNme()&&item.app_id != 570"
+				:style="getQualityColor()">{{quality.localized_name}}</text>
+			<text v-if="rarity && item.app_id == 570" class="rarity-tag"
+				:style="getRarityStyle()">{{ rarity.localized_name }}</text>
+		</view>
+		<text class="market-name ellipsis" :style="{width:width + 'rpx'}">{{item.market_name}}</text>
+		<view class="item-footer" :style="{width:width + 'rpx'}">
+			<view class="price-box">
+				<text class="price-label">{{currencySymbol}}</text>
+				<text class="price-value">{{item.market_price ? item.market_price : 0}}</text>
+			</view>
+			<text class="sell-num">{{ item.sell_num ? item.sell_num + i18n.t('app.trade.onSale.nums') : ''}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config/index.js';
+	import i18n from '@/utils/locales/i18n';
+	import {
+		itemImage
+	} from './itemUtlis.js';
+	export default {
+		props: {
+			item: {
+				type: Object,
+				default: {},
+			},
+			width: {
+				type: Number,
+				default: 120,
+			},
+			height: {
+				type: Number,
+				default: 0,
+			},
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				quality: this.item.tags.quality,
+				exterior: this.item.tags.exterior,
+				rarity: this.item.tags.rarity,
+			}
+		},
+		created() {
+			this.height = this.height ? this.height : this.width * 0.6;
+		},
+		methods: {
+			toDetail() {
+				uni.$u.route('/pages/product-market/product-template-detail', {
+					schema_id: this.item.id,
+					appid: this.item.app_id,
+				});
+			},
+			getWidthStyle() {
+				return {
+					width: this.width + 'rpx',
+					height: this.height + 'rpx'
+				}
+			},
+			isQualityNme() {
+				if (this.quality && this.quality.name !== 'normal' && this.quality.name !== 'unusual' && this.quality
+					.localized_name) {
+					return true;
+				}
+				return false;
+			},
+			getBorderStyle() {
+				if (this.item.app_id == 570) {
+					if (this.quality?.color == 'D2D2D2') {
+						this.quality.color = 'FFFFFF';
+					}
+					return {
+						'width': this.width + 'rpx',
+						'height': this.height + 'rpx',
+						'border': `2px solid #${this.quality?.color || 'FFFFFF'}`,
+					}
+				}
+				return {
+					'width': this.width * 0.8 + 'rpx',
+					'height': this.height * 0.8 + 'rpx',
+					'margin': (this.width - (this.width * 0.8)) / 2 + 'rpx',
+				}
+			},
+			getImageBg() {
+				if (this.item.app_id == 570) return;
+				return itemImage(this.rarity);
+			},
+
+			/**
+			 * 获取饰品外观的背景色
+			 * @param {Object} item - 饰品对象
+			 * @returns {Object|null} - 背景色样式对象，如果不存在外观则返回 null
+			 */
+			getExteriorBg(item) {
+				if (this.exterior?.color) {
+					return {
+						backgroundColor: `#${this.exterior.color}`,
+					};
+				}
+				return null;
+			},
+			/**
+			 * 获取饰品品质的背景色
+			 * @param {Object} item - 饰品对象
+			 * @returns {Object} - 背景色样式对象
+			 */
+			getQualityColor() {
+				return {
+					width: `${this.width / 2}rpx`,
+					color: `#${this.quality?.color || 'FFFFFF'}`, // 默认白色
+					backgroundColor: '#101822', // 默认白色
+				};
+			},
+			getRarityStyle() {
+				return {
+					backgroundColor: `#${this.rarity?.color || '888'}`
+				};
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import '../../theme.scss';
+
+	.market-name {
+		height: 50rpx;
+		padding: 10rpx;
+		color: $app-text-secondary;
+		font-size: $font-size-sm;
+	}
+
+	.ellipsis {
+		lines: 1;
+		text-overflow: ellipsis;
+	}
+
+	.item-row {
+		position: relative;
+
+		.item-img-bg {
+			opacity: 0.95;
+			position: absolute;
+			left: 0;
+			top: 0;
+		}
+
+		.sticker-list {
+			left: 0;
+			bottom: 35rpx;
+			display: flex;
+			flex-direction: row;
+			position: absolute;
+
+			.sticker-img {
+				width: 35rpx;
+				height: 35rpx;
+				margin-left: 5rpx;
+			}
+		}
+
+		.item-quality {
+			width: 250rpx;
+			opacity: 0.8;
+			padding: 8rpx 15rpx;
+			transform: rotate(45deg);
+			position: absolute;
+			right: -50rpx;
+			top: 20rpx;
+			text-align: center;
+			color: $app-background;
+			font-size: $font-size-xs;
+			background-color: $app-background-black;
+		}
+
+		.item-value {
+			left: 0rpx;
+			top: 0rpx;
+			display: flex;
+			flex-direction: row;
+			position: absolute;
+
+			.item-exterior {
+				opacity: 0.8;
+				padding: 8rpx 15rpx;
+				color: $app-background;
+				font-size: $font-size-xs;
+				background-color: $app-background-black;
+			}
+
+			.cooling-time {
+				left: 0;
+				opacity: 0.8;
+				padding: 8rpx;
+				text-align: center;
+				position: relative;
+				color: $app-background;
+				font-size: $font-size-xs;
+				background-color: $app-text-primary;
+			}
+
+			.paint-seed {
+				left: 0;
+				opacity: 0.8;
+				padding: 8rpx;
+				text-align: center;
+				position: relative;
+				color: $app-background;
+				font-size: $font-size-xs;
+				background-color: $app-text-primary;
+			}
+		}
+
+		.item-label {
+			left: 0rpx;
+			bottom: 0rpx;
+			height: 36rpx;
+			align-items: center;
+			justify-content: center;
+			position: absolute;
+			opacity: 0.7;
+			background-color: $app-background-black;
+
+			.lable-text {
+				font-size: $font-size-xs;
+				color: $app-background;
+			}
+		}
+	}
+
+	.rarity-tag {
+		top: 4rpx;
+		left: 4rpx;
+		opacity: 0.8;
+		padding: 8rpx;
+		text-align: center;
+		position: absolute;
+		color: $app-background;
+		font-size: $font-size-xs;
+	}
+
+	.item-footer {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 5rpx 10rpx;
+		margin-bottom: 10rpx;
+
+		.price-box {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+		}
+
+		.price-label {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			margin-right: 8rpx;
+		}
+
+		.price-value {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			font-weight: 300;
+		}
+
+		.sell-num {
+			color: $app-text-secondary;
+			font-size: $font-size-xs;
+		}
+	}
+</style>

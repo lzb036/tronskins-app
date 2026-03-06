@@ -1,0 +1,122 @@
+<!-- 店铺在售 -->
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<list-refresh :height="175" :total="list.length" :dataList="list" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<shop-sale-item :uuid="uuid" :item="item" :schema="schemas[item.schema_id]":sticker-map="schemas" 
+					@reload="refresh()"></shop-sale-item>
+			</template>
+		</list-refresh>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import ShopSaleItem from '@/components/shop/user-shop/ShopSaleItem.nvue';
+	import {
+		ShopSellListApi,
+		ShopSellList2Api
+	} from '@/api/modules/shop/shop.js';
+	import {
+		isLogin
+	} from '../../../services/user';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		props: ['uuid', 'appid'],
+		components: {
+			ListRefresh,
+			ShopSaleItem
+		},
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+				schemas: {},
+				asc: false,
+				pager: {
+					page: 1,
+					pageSize: 50,
+				},
+				isLoading: false,
+			}
+		},
+		watch: {
+			uuid(val, oldVal) {
+				if (val != oldVal) {
+					this.refresh();
+				}
+			},
+			appid(val, oldVal) {
+				if (val != oldVal) {
+					this.refresh();
+				}
+			}
+		},
+		created() {
+			this.getShopInventoryList()
+		},
+		mounted() {
+			uni.$on('order-sell-reload', () => {
+				this.refresh();
+			})
+		},
+		methods: {
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async getShopInventoryList() {
+				let res;
+				let params = {
+					appId: this.appid,
+					asc: this.asc,
+					field: "price",
+					keywords: undefined,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					uuid: this.uuid,
+				}
+				if (isLogin()) {
+					res = await ShopSellList2Api(params);
+				} else {
+					res = await ShopSellListApi(params);
+				}
+				if (res.code == 0) {
+					if (this.pager.page > res.datas.pager.pages) return;
+					res.datas.assets.forEach(item => {
+						item.isSelect = false;
+					})
+					this.schemas = res.datas.schemas;
+					this.list = this.list.concat(res.datas.assets);
+
+				}
+			},
+			async refresh() {
+				try {
+					this.isLoading = true;
+					this.list = [];
+					this.pager.page = 1;
+					await this.getShopInventoryList();
+				} catch (e) {
+
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getShopInventoryList();
+			},
+		}
+	}
+</script>
+
+<style>
+
+</style>

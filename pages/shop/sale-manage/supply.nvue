@@ -1,0 +1,358 @@
+<!-- 供应 -->
+<template>
+	<view class="buyying-container">
+		<u-navbar :title="i18n.t('app.trade.supply.inventory')" :autoBack="true" placeholder></u-navbar>
+		<view class="buyying-item-header">
+			<base-item :imageUrl="supItem.image_url" :width="180" :num="supItem.nums"></base-item>
+			<view class="header-title">
+				<text class="market-name">{{supItem.market_name}}</text>
+				<text class="price">{{currencySymbol + ' '+ supItem.price}}</text>
+			</view>
+		</view>
+		<view class="supply-title">
+			<text class="label">{{i18n.t('app.trade.supply.message.select_inventory')}}:</text>
+			<text class="label">{{selectList.length + '/' + supItem.nums}}</text>
+		</view>
+		<waterfall-refresh :dataList="list" height="210" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<item-buying :key="item.id" :item="item" :schemas="schemas" :checkNums="selectList.length"
+					:requireNums="supItem.nums" width="355"></item-buying>
+			</template>
+		</waterfall-refresh>
+		<view class="select-content">
+			<view class="select-left" @click="itemAll()">
+				<image class="select-all" :src="`/static/image/game/${ isAll ? 'all-active' : 'all' }.png`" mode="">
+				</image>
+				<text class="select-value">{{`(${selectList.length}/${list.length})` }}</text>
+			</view>
+			<view class="select-right">
+				<text class="up-shop-btn" @click="showSupplyModel()">{{i18n.t('app.trade.supply.text')}}</text>
+			</view>
+		</view>
+		<u-popup :show="show" mode="center">
+			<ConfirmSupply :list="selectList" @cancel="show=false" @confirm="supplyShopSubmit"></ConfirmSupply>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import config from '@/config/index.js';
+	import ItemBuying from '@/components/game-item/ItemBuying.nvue';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import WaterfallRefresh from '@/components/layout/waterfall-refresh.nvue';
+	import ConfirmSupply from '@/components/shop/buying/ConfirmSupply.nvue';
+	import {
+		inventoryListApi
+	} from '@/api/modules/shop/shop-inventory.js';
+	import {
+		OrderItemSupplyApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		steamOnlineStateApi
+	} from '@/api/modules/steam.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+
+	export default {
+		components: {
+			ItemBuying,
+			BaseItem,
+			WaterfallRefresh,
+			ConfirmSupply,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				supItem: {
+					id: '',
+					appid: '',
+					schema_id: '',
+					image_url: '',
+					market_name: '',
+					price: '',
+					nums: ''
+				},
+				isAll: false,
+				list: [],
+				schemas: {},
+				show: false,
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				isSubmitting: false, // 添加提交状态标志
+			}
+		},
+		onLoad(options) {
+			this.supItem.id = options.id;
+			this.supItem.appid = options.appid;
+			this.supItem.schema_id = options.schema_id;
+			this.supItem.image_url = options.image_url;
+			this.supItem.market_name = options.market_name;
+			this.supItem.price = options.price;
+			this.supItem.nums = options.nums;
+			this.getUserInventory();
+		},
+		computed: {
+			selectList() {
+				return this.list.filter(item => item.isSelect);
+			}
+		},
+		methods: {
+			showSupplyModel() {
+				if (this.selectList.length == 0) {
+					uni.$u.toast(i18n.t("app.trade.supply.message.not_selected"));
+					return;
+				}
+				if (this.selectList.length > this.supItem.nums) {
+					uni.$u.toast(i18n.t("app.trade.supply.message.more_than_needed"));
+					return;
+				}
+				this.show = true;
+				this.selectList.forEach(select => {
+					select.price = Number(this.supItem.price);
+				})
+			},
+			async supplyShopSubmit() {
+				if (this.isSubmitting) {
+					return;
+				}
+				this.isSubmitting = true;
+				try {
+					// steam是否存在长期token
+					const steamStatus = await steamOnlineStateApi();
+					if (!steamStatus.datas) {
+						uni.showModal({
+							content: i18n.t('app.steam.session.expired'),
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							success: (res) => {
+								if (res.confirm) {
+									uni.$u.route('/pages/user/steam/steam-simulate-login');
+								}
+							}
+						});
+						this.isSubmitting = false;
+						return;
+					}
+					uni.showLoading({
+						title: i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					let ids = [];
+					this.selectList.forEach(j => {
+						ids.push(j.id);
+					});
+					const res = await OrderItemSupplyApi({
+						appid: this.supItem.appid,
+						id: this.supItem.id,
+						price: this.supItem.price,
+						ids: ids,
+					});
+					uni.hideLoading();
+					console.log(res.datas)
+					if (res.datas.includes('Steam issue') || res.datas.includes('Inventory privacy')) {
+						let msg = this.i18n.t('app.inventory.message.privacy') + getAppUserInfo().config.nickname
+						uni.showModal({
+							content: res.datas.includes('Steam issue') ? this.i18n.t(
+								'app.steam.message.trading_restrictions') : msg,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							
+						})
+						this.isSubmitting = false;
+						return;
+					}
+					if (res.code == 0) {
+						this.show = false;
+						uni.$u.toast(res.datas);
+						uni.navigateBack();
+						uni.$emit('order-supply-success');
+						this.isSubmitting = false;
+						return;
+					}else{
+						uni.$u.toast(res.datas);
+						this.isSubmitting = false;
+					}
+				} catch (e) {
+					uni.hideLoading();
+					this.isSubmitting = false;
+				}
+				
+				setTimeout(() => {
+					this.isSubmitting = false;
+				}, 1000);
+			},
+			async getUserInventory() {
+				try {
+					const res = await inventoryListApi({
+						appId: this.supItem.appid,
+						page: this.pager.page,
+						pageSize: this.pager.pageSize,
+						schemaId: this.supItem.schema_id,
+						canSupply: true,
+					});
+					if (res.code == 0) {
+						res.datas.assets.forEach(item => {
+							item.isSelect = false;
+						})
+						this.schemas = Object.assign({}, this.schemas, res.datas.schemas);
+						this.list = this.list.concat(res.datas.assets);
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+
+			/**
+			 * 全选
+			 */
+			itemAll() {
+				this.isAll = !this.isAll;
+				let isSelectNum = 0;
+				this.list.forEach(item => {
+					if (this.isAll) {
+						if (item.cd || !item.tradeAble || item.status == 2) {
+							return;
+						}
+						if (isSelectNum >= this.supItem.nums) {
+							item.isSelect = false;
+						} else {
+							isSelectNum++;
+							item.isSelect = true;
+						}
+					} else {
+						item.isSelect = false;
+					}
+				})
+			},
+			refresh() {
+				this.list = [];
+				this.pager.page = 1;
+				this.getUserInventory();
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getUserInventory();
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.buyying-container {
+		width: 750rpx;
+	}
+
+	.buyying-item-header {
+		width: 750rpx;
+		height: 80px;
+		padding: 20rpx;
+		display: flex;
+		flex-direction: row;
+
+		.header-title {
+			width: 500rpx;
+			margin-left: 20rpx;
+			display: flex;
+			flex-direction: column;
+			flex-wrap: wrap;
+
+			.market-name {
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				lines: 1;
+				text-overflow: ellipsis;
+			}
+
+			.price {
+				font-size: $font-size-md;
+				color: $app-text-price;
+				font-weight: bold;
+				margin-top: 10rpx;
+			}
+		}
+	}
+
+	.supply-title {
+		width: 750rpx;
+		height: 30px;
+		background: $app-surface-elevated;
+		display: flex;
+		flex-direction: row;
+		padding: 10rpx 20rpx;
+		justify-content: space-between;
+		margin-bottom: 20rpx;
+		align-items: center;
+
+		.label {
+			font-size: $font-size-md;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.select-content {
+		width: 750rpx;
+		height: 80rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding-left: 20rpx;
+		background-color: $app-background;
+		position: fixed;
+		left: 0;
+		bottom: 0rpx;
+		border-top: 1rpx solid $app-surface;
+
+		.select-left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+
+			.select-all {
+				width: 30rpx;
+				height: 30rpx;
+				margin-right: 10rpx;
+			}
+
+			.select-value {
+				color: $app-text-primary;
+				font-size: $font-size-sm;
+			}
+		}
+
+		.select-right {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+
+			.up-shop-btn {
+				width: 200rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				text-align: center;
+				color: $app-background;
+				font-size: $font-size-md;
+				background-color: $app-success-dark;
+			}
+
+			.change-price-btn {
+				width: 200rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				text-align: center;
+				color: $app-background;
+				font-size: $font-size-md;
+				background-color: #a2896a;
+			}
+		}
+	}
+</style>

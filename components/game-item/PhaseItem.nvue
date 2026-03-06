@@ -1,0 +1,180 @@
+<template>
+	<view class="item-container" :style="{width:width + 'rpx'}">
+		<view class="item-row" :style="getWidthStyle()" v-if="item">
+			<image class="item-img-bg" :src="getImageBg()" :style="getWidthStyle()"></image>
+			<image v-if="image_url" class="item-img" :src="image_url" :style="getBorderStyle()"></image>
+			<sticker-list class="item-sticker-list" v-if="item.stickers&&item.stickers.length > 0" :list="item.stickers"
+				:schemas="schemas"></sticker-list>
+			<text class="item-num" v-if="num > 0">x {{num}}</text>
+			<view class="item-value" :style="getItemValueWidth()">
+				<text v-if="item.phase" class="paint-phase">{{item.phase}}</text>
+				<text v-if="item.percentage" class="percentage">{{item.percentage}}%</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config/index.js';
+	import i18n from '@/utils/locales/i18n';
+	import {
+		itemImage
+	} from './itemUtlis.js';
+	import StickerList from '@/components/game-item/StickerList.nvue';
+	
+	export default {
+		components: {
+			StickerList
+		},
+		props: {
+			item: {
+				type: Object,
+				default: {},
+			},
+			schema: {
+				type: Object,
+				default: {},
+			},
+			schemas: {
+				type: Object,
+				default: {},
+			},
+			width: {
+				type: Number,
+				default: 120,
+			},
+			height: {
+				type: Number,
+				default: 0,
+			},
+			num: {
+				type: Number,
+				default: 0,
+			},
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				quality: this.schema.tags?.quality,
+				rarity: this.schema.tags?.rarity,
+				image_url: this.schema.image_url ? this.schema.image_url : this.item.image_url,
+			}
+		},
+		created() {
+			this.height = this.height ? this.height : this.width * 0.6;
+		},
+		methods: {
+			getWidthStyle() {
+				return {
+					width: this.width + 'rpx',
+					height: this.height + 'rpx'
+				}
+			},
+			getBorderStyle() {
+				if (this.item) {
+					if (this.item.app_id == 570) {
+						if (this.quality?.color == 'D2D2D2') {
+							this.quality.color = 'FFFFFF';
+						}
+						return {
+							'width': this.width + 'rpx',
+							'height': this.height + 'rpx',
+							'border': `2px solid #${this.quality?.color || 'FFFFFF'}`,
+						}
+					}
+					return {
+						'width': this.width * 0.8 + 'rpx',
+						'height': this.height * 0.8 + 'rpx',
+						'margin': (this.width - (this.width * 0.8)) / 2 + 'rpx',
+					}
+				}
+			},
+			/**
+			 * 获取饰品图片的静态地址
+			 * @param {string} imagePath - 图片路径
+			 * @returns {string} - 完整的图片地址
+			 */
+			getImageStatic(imagePath) {
+				return `/static/image/game/${imagePath}`;
+			},
+			getImageBg() {
+				if (this.rarity) {
+					return itemImage(this.rarity);
+				}
+				return itemImage();
+			},
+			getItemValueWidth() {
+				return {
+					width: this.width + 'rpx',
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.item-row {
+		position: relative;
+
+		.item-img-bg {
+			opacity: 0.9;
+			position: absolute;
+			left: 0;
+			top: 0;
+		}
+	}
+	
+	.item-sticker-list{
+		position: absolute;
+		left: 0;
+		bottom: 2rpx;
+	}
+
+	.item-value {
+		left: 0rpx;
+		top: 0rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: flex-end;
+		position: absolute;
+	}
+
+	.paint-phase {
+		right: 0rpx;
+		top: 0;
+		opacity: 0.8;
+		padding: 6rpx;
+		text-align: center;
+		position: relative;
+		color: $app-background;
+		font-size: $font-size-xs;
+		background-color: $app-link;
+	}
+
+	.percentage {
+		left: 0;
+		opacity: 0.8;
+		padding: 8rpx;
+		text-align: center;
+		position: relative;
+		color: $app-background;
+		font-size: $font-size-xs;
+		background-color: $app-text-primary;
+	}
+
+	.item-num {
+		width: 50rpx;
+		height: 25rpx;
+		line-height: 25rpx;
+		opacity: 0.6;
+		right: 0;
+		bottom: 0;
+		color: $app-background;
+		text-align: center;
+		position: absolute;
+		font-size: $font-size-xs;
+		background-color: $app-background-black;
+	}
+</style>

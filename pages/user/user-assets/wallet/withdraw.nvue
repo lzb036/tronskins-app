@@ -1,0 +1,506 @@
+<template>
+	<view style="background-color: #f4f4f4;flex: 1;">
+		<u-loading-page loading-text="loading..." :loading="userInfo ? false : true"></u-loading-page>
+		<view class="withdraw-container" v-if="userInfo">
+			<u-navbar :title="i18n.t('app.user.withdraw.title')" :autoBack="true" bgColor="#6471bf" placeholder left-icon-color="#fff"
+				:titleStyle="{color:'#fff'}">
+				<view slot="right">
+					<text class="withdraw-record" @click="toRecord()">{{i18n.t('app.user.wallet.withdraw_record')}}</text>
+				</view>
+			</u-navbar>
+			<view class="withdraw-amount-container">
+				<text class="title">{{i18n.t('app.user.withdraw.available_balance')}}</text>
+				<text
+					class="value">{{currencySymbol + ' ' + (userInfo.fund.available ? userInfo.fund.available : 0)}}</text>
+			</view>
+			<view class="withdraw-table">
+				<view class="withdraw-item" @click="isAddress = true">
+					<text class="label">{{i18n.t('app.user.wallet.address')}}</text>
+					<text class="value">{{addressInfo ? addressInfo.name : i18n.t('app.user.withdraw.select_address')}}</text>
+				</view>
+				<text class="title">{{i18n.t('app.user.withdraw.amount')}}</text>
+				<view class="withdraw-item">
+					<text class="symbol">{{currencySymbol}}</text>
+					<input class='input' v-model="amount" @input="checkPrice($event)" @blur="hideKeyboard()"
+						type="digit" inputmode="decimal"></input>
+					<text class="all-withdraw-submit" @click="getAmount()">{{i18n.t('app.user.withdraw.full_title')}}</text>
+				</view>
+				<view class="withdraw-item">
+					<text class="label">{{i18n.t('app.inventory.upshop.handling_charge')}}</text>
+					<text class="feed-value">{{currencySymbol}}&nbsp;{{fee}}</text>
+				</view>
+			</view>
+			<u-button class="withdraw-btn" type="primary" :text="i18n.t('app.common.confirm')"
+				@click="withdrawSubmit()"></u-button>
+			<text class="tips-text">1.{{i18n.t('app.user.withdraw.tips')}}</text>
+			<text class="tips-text">2.{{ getWithdrawFeeTips() }}</text>
+			<text class="tips-text">3.{{i18n.t('app.user.withdraw.tips_3')}}</text>
+		</view>
+		<u-popup :show="isAddress" mode="bottom" @close="isAddress = false">
+			<view class="address-list-container">
+				<view class="address-list-header">
+					<text class="title">{{ i18n.t('app.user.withdraw.select_address') }}</text>
+					<u-icon name="close" class="close" @click="isAddress = false" color="#888" size="16"></u-icon>
+				</view>
+				<list class="address-ul">
+					<cell class="address-li" v-for="item in addressList" :key="item.id"
+						@click="selectWithdraw($event,item)">
+						<text class="label">{{item.name}}</text>
+						<text class="value">{{item.account}}</text>
+						<u-icon @click="deleteWithdraw(item)" name="close" class="address-li-close" color="#b8b8b8"
+							size="14"></u-icon>
+					</cell>
+				</list>
+				<text class="address-list-btn" @click="addWithdrawShow = true">{{i18n.t('app.user.withdraw.add_address')}}</text>
+			</view>
+		</u-popup>
+		<u-popup :show="addWithdrawShow" mode="bottom" @close="addWithdrawShow = false">
+			<view class="address-list-container">
+				<view class="address-list-header">
+					<text class="title">{{ i18n.t('app.user.withdraw.add_address') }}</text>
+					<u-icon name="close" class="close" @click="addWithdrawShow = false" color="#888" size="16"></u-icon>
+				</view>
+				<input class="add-withdraw-input" type="text" v-model="addWithdrawInfo.name"
+					:placeholder="i18n.t('app.user.withdraw.message.enter_name')">
+				<input class="add-withdraw-input" type="text" v-model="addWithdrawInfo.account"
+					:placeholder="i18n.t('app.user.wallet.address')">
+				<text class="address-list-btn" @click="addWithdrawSubmit()">{{i18n.t('app.common.confirm')}}</text>
+			</view>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import {
+		userInfoApi,
+		AddUserWithdrawApi,
+		UserWithdrawAddressListApi,
+		AddWithdrawAddressApi,
+		RemoveWithdrawAddressApi
+	} from '@/api/modules/user.js';
+	import {
+		GetSysParamsApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		get2FAList,
+	} from '@/utils/storage/modules/2fa-token.js';
+	import { stringFormat } from '@/utils/str/index.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				fee: 0,
+				userInfo: null,
+				amount: '',
+				isAddress: false,
+				addressList: [],
+				addressInfo: null,
+				addWithdrawShow: false,
+				addWithdrawInfo: {},
+			}
+		},
+		created() {
+			this.getUserInfo();
+			this.getAddressList();
+			this.getWithdrawFee();
+		},
+		methods: {
+			/**
+			 * 提现
+			 */
+			async withdrawSubmit() {
+				if (Number(this.amount <= 0)) {
+					uni.$u.toast(this.i18n.t('app.user.withdraw.message.enter_amount'));
+					return;
+				}
+				if (Number(this.amount < 10)) {
+					uni.$u.toast(this.i18n.t('app.user.withdraw.message.amount_error'));
+					return;
+				}
+
+				if (Number(this.amount > 20000)) {
+					uni.$u.toast(this.i18n.t('app.user.withdraw.max_message'));
+					return;
+				}
+
+				if (this.addressList.length <= 0) {
+					uni.$u.toast(this.i18n.t('app.user.withdraw.enter_addres'));
+					return;
+				}
+
+				let guardList = get2FAList();
+				if (!this.userInfo.need2FA || !this.userInfo.safeTokenStatus || guardList.length == 0) {
+					uni.showModal({
+						title: i18n.t('app.system.tips.title'),
+						content: i18n.t('app.user.guard.set_tips'),
+						confirmText: i18n.t('app.common.confirm'),
+						cancelText: i18n.t('app.common.cancel'),
+						success: (res) => {
+							if (res.confirm) {
+								uni.$u.route('/pages/user/guard/2fa-token')
+							}
+						}
+					});
+					return
+				}
+				try {
+					let code = this.getUserTwoFACode();
+					const res = await AddUserWithdrawApi({
+						amount: this.amount,
+						account: this.addressInfo.account,
+						twoFa: code
+					});
+					if (res.code == 0) {
+						this.amount = '';
+						this.getUserInfo();
+						uni.$u.toast(this.i18n.t('app.user.withdraw.message.success'));
+					}
+				} catch (err) {
+					uni.$u.toast(err.data.datas);
+				}
+			},
+			/**
+			 * 选择钱包
+			 */
+			selectWithdraw(e, item) {
+				if (e.target.ref) {
+					this.addressInfo = item;
+					this.isAddress = false;
+				}
+			},
+			/**
+			 * 删除钱包
+			 */
+			deleteWithdraw(item) {
+				uni.showModal({
+					title: i18n.t('app.system.tips.title'),
+					content: i18n.t('app.user.withdraw.message.delete_address'),
+					confirmText: i18n.t('app.common.confirm'),
+					cancelText: i18n.t('app.common.cancel'),
+					success: async (res) => {
+						if (res.confirm) {
+							const res = await RemoveWithdrawAddressApi({
+								id: item.id
+							});
+							if (res.code == 0) {
+								uni.$u.toast(this.i18n.t('app.system.message.success'));
+								this.getAddressList();
+							}
+						}
+					}
+				});
+			},
+			/**
+			 * 添加钱包
+			 */
+			async addWithdrawSubmit() {
+				if (!this.addWithdrawInfo.name) {
+					uni.$u.toast(this.i18n.t('app.user.withdraw.message.name_empty'));
+					return;
+				}
+				if (!this.addWithdrawInfo.account) {
+					uni.$u.toast(this.i18n.t('app.user.withdraw.enter_address'));
+					return;
+				}
+				try {
+					const res = await AddWithdrawAddressApi({
+						name: this.addWithdrawInfo.name,
+						account: this.addWithdrawInfo.account
+					})
+					if (res.code == 0) {
+						uni.$u.toast(this.i18n.t('app.system.message.success'));
+						this.addWithdrawShow = false;
+						this.getAddressList();
+					}
+				} catch (error) {
+					//TODO handle the exception
+				}
+			},
+			getWithdrawFeeTips(){
+				return stringFormat(this.i18n.t('app.user.withdraw.tips_2'), this.fee);
+			},
+			getUserTwoFACode() {
+				let guardList = get2FAList();
+				let guardItem = guardList.find(item => (item.userId == this.userInfo.id) && (item.appUse == this.userInfo
+					.appUse));
+				if (guardItem) {
+					const jsotp = require('jsotp');
+					// 当前时间/秒
+					let now = new Date();
+					let seconds = now.getSeconds(guardItem.secret);
+					let code = '';
+					let totp = jsotp.TOTP(guardItem.secret);
+					code = totp.now();
+					return code;
+				} else {
+					uni.showModal({
+						title: i18n.t('app.system.tips.title'),
+						content: i18n.t('app.user.guard.set_tips'),
+						confirmText: i18n.t('app.common.confirm'),
+						cancelText: i18n.t('app.common.cancel'),
+						success: (res) => {
+							if (res.confirm) {
+								uni.$u.route('/pages/user/guard/2fa-token')
+							}
+						}
+					});
+				}
+
+			},
+			getAmount() {
+				this.amount = this.userInfo.fund.available;
+			},
+			async getUserInfo() {
+				const res = await userInfoApi();
+				if (res.code == 0) {
+					this.userInfo = res.datas;
+				}
+			},
+			hideKeyboard() {
+				uni.hideKeyboard();
+			},
+			checkPrice(e) {
+				if (e.detail.value) {
+					let value = Number(e.detail.value);
+					let integerPart = Number(String(value).split('.')[0]);
+					if (isNaN(integerPart)) {
+						// 转换成整数失败，包含非数字字符
+						uni.$u.toast(this.i18n.t('app.market.filter.message.price_error'));
+						this.amount = '';
+						return;
+					}
+					let available = this.userInfo.fund ? this.userInfo.fund.available : null;
+					if (value > available) {
+						this.amount = available;
+						return
+					}
+					let length = 0;
+					if (String(value).split('.')[1]) {
+						length = String(value).split('.')[1].length;
+						if (length && length > 2) {
+							this.amount = Number(value).toFixed(2);
+						}
+					}
+				}
+			},
+			async getAddressList() {
+				try {
+					const res = await UserWithdrawAddressListApi();
+					if (res.code == 0) {
+						this.addressList = res.datas;
+						if (this.addressList.length > 0) {
+							this.addressInfo = this.addressList[0];
+						}
+					}
+				} catch (error) {
+					//TODO handle the exception
+				}
+			},
+			async getWithdrawFee() {
+				try {
+					const res = await GetSysParamsApi();
+					if (res.code == 0) {
+						this.fee = res.datas.withdrawFeeAmount;
+					}
+				} catch (error) {
+					//TODO handle the exception
+				}
+			},
+			toRecord() {
+				uni.$u.route('/pages/user/user-assets/wallet/fund-withdraw');
+			},
+		}
+	}
+</script>
+
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+
+	.address-list-container {
+		width: 750rpx;
+		height: 500rpx;
+		background-color: $app-background;
+	}
+
+	.address-list-header {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		padding: 20rpx;
+		justify-content: space-between;
+		border-bottom: 1px solid $app-surface;
+
+		.title {
+			color: $app-text-primary;
+			font-size: $font-size-md;
+		}
+	}
+
+	.withdraw-record {
+		color: $app-background;
+		font-size: $font-size-sm;
+		text-align: right;
+	}
+
+	.add-withdraw-input {
+		width: 650rpx;
+		height: 120rpx;
+		line-height: 120rpx;
+		padding: 20rpx;
+		margin: 20rpx 0 20rpx 50rpx;
+		color: $app-text-thirdly;
+		font-size: $font-size-lg;
+		background-color: $app-surface;
+		border-radius: 5rpx;
+	}
+
+	.address-ul {
+		width: 650rpx;
+		height: 340rpx;
+		margin-left: 50rpx;
+
+		.address-li {
+			padding: 20rpx;
+			border-bottom: 1rpx solid $app-surface;
+
+			.label {
+				color: $app-text-primary;
+				font-size: $font-size-md;
+				padding-bottom: 10rpx;
+				font-weight: bold;
+			}
+
+			.value {
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+			}
+		}
+
+		.address-li-close {
+			position: absolute;
+			right: 0;
+			bottom: 20rpx;
+			background-color: $app-surface;
+			padding: 5rpx;
+		}
+	}
+
+	.address-list-btn {
+		width: 650rpx;
+		padding: 20rpx;
+		margin-left: 50rpx;
+		color: $app-background;
+		font-size: $font-size-md;
+		border-radius: 5rpx;
+		text-align: center;
+		background-color: $app-link;
+	}
+
+	.withdraw-container {
+		width: 750rpx;
+	}
+
+	.tips-text {
+		color: $app-text-thirdly;
+		font-size: $font-size-sm;
+		padding: 10rpx 30rpx;
+	}
+
+	.withdraw-btn {
+		width: 700rpx;
+		background-color: $app-link;
+		border-color: $app-link;
+		margin-left: 25rpx;
+		margin-bottom: 30rpx;
+	}
+
+	.withdraw-amount-container {
+		width: 750rpx;
+		height: 80px;
+		background: $app-background-blue;
+		padding: 30rpx;
+
+		.title {
+			font-size: $font-size-sm;
+			color: $app-surface;
+		}
+
+		.value {
+			font-size: $font-size-xl;
+			color: $app-background;
+			font-weight: bold;
+			margin-top: 20rpx;
+		}
+	}
+
+	.withdraw-table {
+		width: 700rpx;
+		margin-left: 25rpx;
+		margin-top: 25rpx;
+		padding: 15rpx;
+		background-color: $app-background;
+		box-shadow: 2rpx 2rpx 2rpx $app-surface-elevated;
+		border-radius: 5rpx;
+		margin-bottom: 20rpx;
+
+		.title {
+			color: $app-text-primary;
+			font-size: $font-size-sm;
+			padding: 20rpx 0 0 20rpx;
+		}
+
+		.withdraw-item {
+			width: 660rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			border-bottom: 1rpx solid $app-surface;
+			padding: 20rpx;
+
+			.label {
+				width: 200rpx;
+				color: $app-text-primary;
+				font-size: $font-size-sm;
+			}
+
+			.value {
+				width: 400rpx;
+				color: $app-text-primary;
+				font-size: $font-size-sm;
+			}
+
+			.feed-value {
+				width: 400rpx;
+				color: orange;
+				font-size: $font-size-sm;
+				text-align: right;
+			}
+
+			.symbol {
+				width: 50rpx;
+				color: $app-text-primary;
+				font-size: $font-size-md;
+				font-weight: bold;
+			}
+
+			.input {
+				width: 400rpx;
+				color: $app-text-primary;
+				font-size: $font-size-md;
+				font-weight: bold;
+			}
+
+			.all-withdraw-submit {
+				width: 150rpx;
+				font-size: $font-size-sm;
+				color: $app-link;
+				text-align: right;
+			}
+		}
+	}
+</style>

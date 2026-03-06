@@ -1,0 +1,160 @@
+<template>
+	<view class="verion-update">
+		<!-- 下载进度弹窗 -->
+		<u-modal :show="showDownloadModal" :title="i18n.t('app.system.version.latest_discover')" :show-cancel-button="false"
+			:showConfirmButton="false" :confirm-button-props="{ loading: true }">
+			<view class="progress-container">
+				<image class="update-image" src="/static/image/update.png" mode=""></image>
+				<view class="progress-line">
+					<u-line-progress :percentage="downloadProgress" activeColor="#19be6b"></u-line-progress>
+				</view>
+				<text class="progress-text">{{downloadProgress + '%'}}</text>
+			</view>
+		</u-modal>
+		<!-- 重启提示 -->
+		<u-modal :show="showRestartModal" title="Update Complete"
+			content="You need to restart the application to take effect" :confirmText="i18n.t('app.common.confirm')"
+			@confirm="restartApp" />
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config';
+	import {
+		getServerCookie,
+	} from '@/utils/storage/modules/domain.js';
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				showDownloadModal: false,
+				showRestartModal: false,
+				downloadProgress: 0,
+				downloadTask: null
+			};
+		},
+		mounted() {
+			setTimeout(() => {
+				this.checkUpdate();
+			}, 2000);
+		},
+		methods: {
+			// 检查更新入口方法
+			async checkUpdate() {
+				try {
+					console.log("开始检测")
+					plus.runtime.getProperty(plus.runtime.appid, (versionInfo) => {
+						uni.request({
+							url: getServerCookie() + 'api/public/app/checkupdate',
+							method: "GET",
+							data: {
+								appkey: 'tronskins-app',
+								versionName: versionInfo.version,
+								hotVersion: versionInfo.versionCode,
+								platform: uni.getSystemInfoSync().platform,
+							},
+							header: {
+								'content-type': "application/json;charset=UTF-8",
+							},
+						}).then(res => {
+							if (res.data.forwardUrl && res.data.forwardUrl.length > 0) {
+								try {
+									if (res.data.forwardUrl.endsWith(".apk")) {
+										plus.runtime.openURL(res.data.packageUrl);
+									} else {
+										this.startDownload(res.data.forwardUrl);
+									}
+								} catch (error) {
+									console.log(error)
+									this.showDownloadModal = false;
+								}
+							} else {
+								this.showDownloadModal = false;
+							}
+						})
+					});
+				} catch (e) {
+					this.showDownloadModal = false;
+					uni.showToast({
+						title: i18n.t('app.system.version.download_failed'),
+						icon: 'none'
+					});
+				}
+			},
+
+			// 开始下载
+			startDownload(forwardUrl) {
+				this.showDownloadModal = true;
+				this.downloadProgress = 0;
+
+				// 创建下载任务
+					console.log(forwardUrl)
+				const downloadTask = plus.downloader.createDownload(forwardUrl, {
+					method: 'GET',
+					filename: "_doc/update/"
+				}, (download, status) => {
+					console.log(status)
+					if (status === 200) {
+						plus.runtime.install(download.filename, {
+							force: true
+						});
+						this.showDownloadModal = false;
+						this.showRestartModal = true;
+					} else {
+						uni.showToast({
+							title: 'Download failed',
+							icon: 'none'
+						});
+						this.showDownloadModal = false;
+					}
+				});
+
+				// 监听下载进度
+				downloadTask.addEventListener('statechanged', (task, status) => {
+					if (task.state === 3) { // 下载中
+						const progress = parseInt(
+							(task.downloadedSize / task.totalSize) * 100
+						);
+						this.downloadProgress = progress > 100 ? 100 : progress;
+					}
+				});
+
+				downloadTask.start();
+			},
+
+			// 重启应用
+			restartApp() {
+				plus.runtime.restart();
+			}
+		}
+	};
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	
+	.progress-container {
+		width: 400rpx;
+		text-align: center;
+		position: relative;
+	}
+
+	.update-image {
+		height: 400rpx;
+	}
+
+	.progress-line {
+		position: absolute;
+		left: 0;
+		bottom: 60rpx;
+	}
+
+	.progress-text {
+		width: 400rpx;
+		margin-top: 20rpx;
+		color: $app-text-primary;
+		font-size: $font-size-sm;
+		text-align: center;
+	}
+</style>

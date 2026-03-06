@@ -1,0 +1,390 @@
+<template>
+	<view class="login-container" :style="{ paddingTop: statusBarHeight + 'px' }">
+		<!-- 头部标题 -->
+		<view class="header">
+			<u-icon class="back-arrow" name="arrow-leftward" color="#333" size="24" @click="goBack()"></u-icon>
+			<text class="title">{{i18n.t('app.user.login.tronskins')}}</text>
+		</view>
+		<view class="form-box">
+			<input v-model="username" class="login-input" type="text"
+				:placeholder="i18n.t('app.user.setting.email')"></input>
+			<input v-model="password" class="login-input" type="password"
+				:placeholder="i18n.t('app.user.setting.password')"></input>
+			<input v-if="isTwoFactorAuth" :maxlength="6" v-model="loginFormData.code" class="login-input" type="text"
+				:placeholder="i18n.t('app.user.login.enter_2fa_captcha')"></input>
+			
+			<view v-if="isEmailVerification" class="email-box">
+				<input :maxlength="6" v-model="loginFormData.code" class="login-input" type="text"
+					:placeholder="i18n.t('app.user.login.enter_captcha')"></input>
+				<text :class="!isCountdownActive?'reget-code':'reget-code disabled'"
+					@click="sendEmailVerificationCode()">{{ !isCountdownActive ? countdownText : i18n.t('app.user.login.reacquire')+'('+countdownText+')' }}</text>
+				<u-code ref="emailCodeRef" @change="onCountdownChange" @end="onCountdownEnd" seconds="60" changeText="x" :start-text="i18n.t('app.user.login.reacquire')"
+					unique-key="login"></u-code>
+			</view>
+			<u-button type="primary" shape="circle" :custom-style="loginButtonStyle" @click="loginSubmit()"
+				:text="i18n.t('app.user.login.title')">
+			</u-button>
+		</view>
+		<view class="other-options">
+			<image @click="navigateToSteamLogin()" class="steam-login" src="/static/image/login/steam.png"></image>
+			<text class="steam-text">Steam</text>
+		</view>
+		<!-- 底部操作链接 -->
+		<view class="footer">
+			<text class="link-text" @click="navigateToPage('forget')">{{ i18n.t('app.user.login.forget_password') }}</text>
+			<text class="link-text" @click="navigateToTokenRecovery()">{{ i18n.t('app.user.login.message.token_loss') }}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+import i18n from '@/utils/locales/i18n';
+import base64 from "base-64";
+import {
+				LoginUserApi,
+				getLoginPubKeyApi,
+				SendQQEmailCodeApi,
+			} from '@/api/modules/login/auth.js';
+			import {
+				setAccessToken,
+				setAppUserInfo,
+				clearAuthStorage
+			} from '@/utils/storage/modules/user.js';
+	import {
+		get2FAList,
+		set2FAList
+	} from '@/utils/storage/modules/2fa-token.js';
+	
+
+export default {
+	data() {
+		return {
+			i18n: i18n,
+			username: "",
+			password: "",
+			loginFormData: {
+				code: '',
+				verifyType: '',
+				authToken:'',
+			},
+			isEmailVerification: false,
+			isTwoFactorAuth: false,
+			statusBarHeight: 0,
+			loginButtonStyle: {
+				height: '90rpx',
+				fontSize: '32rpx',
+				marginTop: '60rpx'
+			},
+			isCountdownActive: false,
+			countdownText: i18n.t('app.user.login.reacquire')
+		}
+	},
+	created() {
+		const systemInfo = uni.getSystemInfoSync();
+		this.statusBarHeight = systemInfo.statusBarHeight || 0;
+	},
+	methods: {
+		onCountdownChange(text) {
+			this.countdownText = text;
+		},
+		onCountdownEnd() {
+			this.isCountdownActive = false;
+		},
+		navigateToPage() {
+			uni.$u.route('pages/auth/forget');
+		},
+		// 导航到令牌遗失页面
+		navigateToTokenRecovery() {
+			uni.$u.route('/pages/auth/token-recovery');
+		},
+
+		// 密码加密（与 Web 端一致）
+		async encryptUserPassword() {
+			try {
+				const response = await getLoginPubKeyApi({
+					username: this.username.trim()
+				});
+				if (response?.code === 0 && response.datas) {
+					const publicKey = response.datas;
+					if (publicKey.length > 0) {
+						const pubKey = base64.decode(publicKey).toString();
+						const sm2Result = require('sm-crypto').sm2.doEncrypt(this.password, pubKey, 1);
+						return sm2Result;
+					}
+				}
+				return this.password;
+			} catch (error) {
+				console.error('密码加密失败:', error);
+				throw new Error('密码加密失败');
+			}
+		},
+
+		// 发送验证码按钮
+		async sendEmailVerificationCode() {
+			const params = {
+				email: this.username.trim(),
+				authToken: this.loginFormData.authToken,
+			}
+			try {
+				const res = await SendQQEmailCodeApi(params)
+				console.log('res:', res);
+				if (res.code === 0) {
+					if (this.$refs.emailCodeRef && this.$refs.emailCodeRef.canGetCode) {
+						this.$refs.emailCodeRef.start();
+						this.isCountdownActive = true;
+					}
+					uni.$u.toast(this.i18n.t('app.user.login.message.send_to_email'));
+				} else {
+					uni.$u.toast(res.datas || this.i18n.t('app.system.message.operation_failed'));
+				}
+			} catch (error) {
+				console.error("error:", error);
+			}
+		},
+
+		// 【唯一登录入口】与 Web 端逻辑完全对齐
+		async loginSubmit() {
+			await clearAuthStorage();
+
+			if (!this.username?.trim()) {
+				uni.$u.toast(this.i18n.t('app.user.login.message.email_error'));
+				return;
+			}
+			if (!this.password?.trim()) {
+				uni.$u.toast(this.i18n.t('app.user.login.message.password_error'));
+				return;
+			}
+
+			// 如果处于验证码输入状态，校验格式
+			if (this.isEmailVerification || this.isTwoFactorAuth) {
+				if (!/^\d{6}$/.test(this.loginFormData.code)) {
+					const message = this.isTwoFactorAuth
+						? this.i18n.t('app.user.login.enter_2fa_captcha')
+						: this.i18n.t('app.user.login.enter_captcha');
+					uni.$u.toast(message);
+					return;
+				}
+			}
+
+			let encryptedPassword;
+			try {
+				encryptedPassword = await this.encryptUserPassword();
+			} catch (error) {
+				return;
+			}
+
+			let deviceId = '';
+			try {
+				const deviceInfo = await new Promise(resolve => plus.push.getClientInfoAsync(resolve));
+				deviceId = deviceInfo.clientid;
+			} catch (error) {
+				console.warn("Failed to get deviceId", error);
+			}
+
+			const requestParams = {
+				username: this.username.trim(),
+				password: encryptedPassword,
+				udid: deviceId,
+				rememberMe: true
+			};
+
+			// 携带验证码（如果需要）
+			if (this.isEmailVerification || this.isTwoFactorAuth) {
+				// 清理验证码中的空格
+				requestParams.code = this.loginFormData.code.replace(/\s/g, '');
+				requestParams.verifyType = this.loginFormData.verifyType;
+				requestParams.authToken = this.loginFormData.authToken;
+			}
+
+			uni.showLoading({ title: this.i18n.t('app.system.tips.please_wait'), mask: true });
+
+			try {
+				const response = await LoginUserApi(requestParams);
+				if (response.code === 0) {
+					const data = response.datas;
+					console.log(data)
+					if(data.verifyType == 0){
+						await setAccessToken({
+							accessToken: data.accessToken || data.token,
+							accessTokenExpireTime: data.accessTokenExpireTime,
+							refreshTokenExpireTime: data.refreshTokenExpireTime ?? data.refreshExpireTime,
+							header: data.header
+						});
+						// 设置用户信息，以便isLogin()函数能够正确识别登录状态
+						setAppUserInfo({
+							userId: response.datas.userId,
+							userName: response.datas.userName,
+							realName: response.datas.realName,
+							appUse: response.datas.appUse,
+							showEmail:response.datas.showEmail
+						});
+						const guardList = get2FAList();
+						// 1. 定义新条目
+						const newGuardInfo = {
+							appUse:response.datas.appUse,
+							userId: response.datas.userId,
+							showEmail: response.datas.showEmail,
+							loggerShowName: response.datas.realName,
+							secret: ''
+						};
+						// 2. 检查是否已存在
+						const isDuplicate = guardList.some(guard =>
+							guard.userId === newGuardInfo.userId &&
+							guard.appUse === newGuardInfo.appUse
+						);
+						
+						// 3. 更新列表
+						if (!isDuplicate) {
+							const newList = [...guardList, newGuardInfo]; // 避免引用污染
+							set2FAList(newList);
+						}
+						uni.$u.toast(this.i18n.t('app.user.login.message.success'));
+						setTimeout(() => {
+							uni.reLaunch({ url: '/pages/home' });
+						}, 1000);
+					}else if(data.verifyType == 1) {
+						this.isEmailVerification = true;
+						this.isTwoFactorAuth = false;
+						this.loginFormData.code = '';
+						this.loginFormData.authToken = data.authToken;
+						 await this.sendEmailVerificationCode();
+					}else if(data.verifyType == 2) {
+						this.isTwoFactorAuth = true;
+						this.isEmailVerification = false;
+						this.loginFormData.code = '';
+						this.loginFormData.authToken = data.authToken;
+						this.loginButtonStyle.marginTop = '30rpx';
+						uni.$u.toast(i18n.t('app.user.login.enter_2fa_captcha'));
+					}else{
+						uni.$u.toast(response.datas);
+					}
+					
+				} else {
+					uni.$u.toast(response.datas);
+				}
+			} catch (error) {
+				console.error("Login error:", error);
+			} finally {
+				uni.hideLoading();
+			}
+		},
+
+		// 其他导航方法（保持不变）
+		navigateToSteamLogin() {
+			uni.$u.route('/pages/auth/steam');
+		},
+		goBack() {
+			uni.navigateBack();
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	/* 通用样式 */
+	.login-container {
+		flex: 1;
+		padding: 0 40rpx;
+		background-color: $app-background;
+	}
+
+	.header {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		padding: 80rpx 0 30rpx 0;
+
+		.title {
+			font-size: $font-size-xl;
+			font-weight: bold;
+			color: $app-text-primary;
+		}
+
+		.back-arrow {
+			margin-right: 25rpx;
+			padding: 10rpx 15rpx 10rpx 0;
+		}
+	}
+
+	.email-box {
+		position: relative;
+
+		.reget-code {
+			height: 80rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			padding: 22rpx 20rpx;
+			color: $app-link;
+			position: absolute;
+			top: 50rpx;
+			right: 10rpx;
+		}
+
+		.disabled {
+			color: $app-text-disabled;
+		}
+	}
+
+	.form-box {
+		.login-input {
+			height: 80rpx;
+			padding-left: 30rpx;
+			font-size: $font-size-md;
+			margin-top: 50rpx;
+			border-radius: 50rpx;
+			color: $app-text-primary;
+			background-color: $app-surface;
+		}
+
+		
+	}
+.token-loss {
+			text-align: center;
+			font-size: $font-size-md;
+			margin-top: 20rpx;
+			color: $app-text-hint;
+			text-decoration: underline;
+		}
+	.footer {
+		position: fixed;
+		bottom: 60rpx;
+		left: 0;
+		right: 0;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 0 40rpx;
+
+		.link-text {
+			color: $app-link;
+			font-size: $font-size-md;
+
+			&:active {
+				opacity: 0.7;
+			}
+		}
+	}
+
+	.other-options {
+		width: 550rpx;
+		display: flex;
+		margin: 50rpx;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+
+		.steam-login {
+			width: 70rpx;
+			height: 70rpx;
+		}
+
+		.steam-text {
+			font-size: $font-size-md;
+			color: $app-text-hint;
+			margin-top: 10rpx;
+		}
+	}
+</style>

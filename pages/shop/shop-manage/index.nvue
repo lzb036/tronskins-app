@@ -1,0 +1,227 @@
+<template>
+	<view class="container">
+		<MarketSellNavbar v-model="currentTab" :list="tabs" :isOnline="isOnline" @change="handleTabClick"
+			@appid="appidChange($event)">
+		</MarketSellNavbar>
+		<swiper :current="currentTab" :duration="300" @change="handleSwiperChange" class="swiper-box">
+			<swiper-item>
+				<view v-if="!isLogin" @click="goLogin()">
+					<u-empty style="padding-bottom: 200rpx;" :text="i18n.t('app.user.login.nologin')"
+						icon="/static/image/no-login.png"></u-empty>
+				</view>
+				<on-sale v-else ref="onSale" :currentTab="currentTab"></on-sale>
+			</swiper-item>
+			<swiper-item>
+				<view v-if="!isLogin" @click="goLogin()">
+					<u-empty style="padding-bottom: 200rpx;" :text="i18n.t('app.user.login.nologin')"
+						icon="/static/image/no-login.png"></u-empty>
+				</view>
+				<pending-shipment v-else ref="pendingShipment"></pending-shipment>
+			</swiper-item>
+			<swiper-item>
+				<view v-if="!isLogin" @click="goLogin()">
+					<u-empty style="padding-bottom: 200rpx;" :text="i18n.t('app.user.login.nologin')"
+						icon="/static/image/no-login.png"></u-empty>
+				</view>
+				<sell-record v-else ref="sellRecord" type="shop"></sell-record>
+			</swiper-item>
+		</swiper>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import MarketSellNavbar from '@/components/layout/MarketSellNavbar.nvue';
+	import OnSale from '@/components/shop/sale-manage/OnSale.nvue';
+	import PendingShipment from '@/components/shop/order-manage/PendingShipment.nvue';
+	import SellRecord from '@/components/shop/sale-manage/SellRecord.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		getAppUserInfo
+	} from '@/utils/storage/modules/user.js';
+	import {
+		GetUserShopInfoApi,
+	} from '@/api/modules/shop/shop.js';
+	import {
+		getTradeMessageShipping
+	} from '@/utils/storage/modules/push-message.js';
+
+	export default {
+		components: {
+			OnSale,
+			SellRecord,
+			MarketSellNavbar,
+			PendingShipment,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currentTab: 0,
+				isLogin: isLogin(),
+				tabs: [{
+						name: i18n.t('app.trade.sale.text'),
+						value: "on-Sale"
+					},
+					{
+						name: i18n.t('app.market.product.wait_for_sending'),
+						value: "pending-shipment",
+						badge: {
+							value: 0,
+						}
+					},
+					{
+						name: i18n.t('app.user.menu.sale'),
+						value: "sell-record"
+					}
+				],
+				isOnline: false
+			}
+		},
+		onShow() {
+			this.isLogin = isLogin();
+			// 通知自定义导航栏切换游戏
+			uni.$emit('app-navbar-appid');
+			this.checkAppid();
+			if (this.isLogin != isLogin()) {
+				this.isLogin = isLogin();
+				this.checkAppid();
+			}
+		},
+		mounted() {
+			this.refresh();
+			uni.$on('update-shop-status', () => {
+				this.getShopInfo();
+			})
+			uni.$on('order-sell-reload', () => {
+				this.refresh();
+			})
+			uni.$on('app-user-logout', () => {
+				this.refresh();
+			})
+			uni.$on('update-trade-message-shipping', () => {
+				this.tabs[1].badge.value = getTradeMessageShipping().sendMark;
+			})
+			uni.$on('update-trade-title', () => {
+				this.currentTab = 1;
+			})
+		},
+		destroyed() {
+			uni.$off('update-shop-status');
+			uni.$off('order-sell-reload');
+			uni.$off('app-user-logout');
+			uni.$off('update-trade-message-shipping');
+			uni.$off('update-trade-title');
+		},
+		methods: {
+			goLogin() {
+				uni.$u.route('/pages/auth/login');
+			},
+			async getShopInfo() {
+				if (!this.isLogin) return;
+				const uuid = getAppUserInfo().uuid ? getAppUserInfo().uuid : getAppUserInfo().shop.uuid;
+				const res = await GetUserShopInfoApi({
+					uuid: uuid
+				});
+				if (res.code != 0) return;
+				const shopInfo = res.datas;
+				this.isOnline = shopInfo.isOnline;
+				if(this.isOnline){
+					uni.setStorageSync("app_shop_offline", String(new Date().getTime()));
+					return;
+				}
+				// 店铺离线一天就提示一次
+				if (!shopInfo.isOnline) {
+					if (!this.checkShowPrompt()) return;
+					uni.showModal({
+						title: this.i18n.t('app.system.tips.title'),
+						content: this.i18n.t('app.user.shop.message.offline'),
+						confirmText: this.i18n.t('app.common.confirm'),
+						cancelText: this.i18n.t('app.common.cancel'),
+						success: (res) => {
+							if (res.confirm) {
+								uni.$u.route('/pages/shop/shop-manage/setting');
+							}
+						}
+					})
+				}
+			},
+			checkShowPrompt() {
+				const lastPromptTime = uni.getStorageSync("app_shop_offline");
+				const now = new Date();
+				if (!lastPromptTime) {
+					return true;
+				}
+				const lastDate = new Date(parseInt(lastPromptTime));
+				const nowDateStr = now.toDateString();
+				const lastDateStr = lastDate.toDateString();
+				return nowDateStr === lastDateStr ? false : true;
+			},
+			checkAppid() {
+				try {
+					if (isLogin()) {
+						if (this.currentTab == 0 && this.$refs.onSale) {
+							this.$refs.onSale.checkAppid();
+						}
+						if (this.currentTab == 1 && this.$refs.pendingShipment) {
+							this.$refs.pendingShipment.checkAppid();
+						}
+						if (this.currentTab == 2 && this.$refs.sellRecord) {
+							this.$refs.sellRecord.checkAppid();
+						}
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			refresh() {
+				try {
+					this.getShopInfo();
+					if (this.currentTab == 0 && this.$refs.onSale) {
+						this.$refs.onSale.isLogin = isLogin();
+						this.$refs.onSale.refresh();
+					}
+					if (this.currentTab == 1 && this.$refs.pendingShipment) {
+						this.$refs.pendingShipment.isLogin = isLogin();
+						this.$refs.pendingShipment.refresh();
+					}
+					if (this.currentTab == 2 && this.$refs.sellRecord) {
+						this.$refs.sellRecord.isLogin = isLogin();
+						this.$refs.sellRecord.refresh();
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			appidChange() {
+				this.checkAppid();
+			},
+			handleTabClick(e) {
+				this.currentTab = e.index;
+				this.refresh();
+			},
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+				this.checkAppid();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.container {
+		flex: 1;
+		background-color: $app-background;
+	}
+
+	.swiper-box {
+		flex: 1;
+		width: 750rpx;
+	}
+</style>

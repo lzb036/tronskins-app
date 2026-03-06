@@ -1,0 +1,281 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+		{
+			"path": "pages/home"
+		},
+		{
+			"path": "pages/shop/sale-manage/inventory-manage"
+		},
+		{
+			"path": "pages/shop/order-manage/up-shop",
+			"style": {
+				"app-plus": {
+					"softinputmode": "adjustResize"
+				}
+			}
+		},
+		{
+			"path": "pages/shop/shop-manage/index"
+		},
+		{
+			"path": "pages/shop/shop-manage/setting"
+		},
+		{
+			"path": "pages/shop/shop-manage/update-name"
+		},
+		{
+			"path": "pages/shop/order-manage/change-price"
+		},
+		{
+			"path": "pages/product-market/index"
+		},
+		{
+			"path": "pages/user/user-center"
+		},
+		{
+			"path": "pages/help-center/index"
+		},
+		{
+			"path": "pages/help-center/feedback"
+		},
+		{
+			"path": "pages/help-center/create-feedback"
+		},
+		{
+			"path": "pages/help-center/show-feedback-detail"
+		},
+		{
+			"path": "pages/help-center/help-category"
+		},
+		{
+			"path": "pages/help-center/show"
+		},
+		{
+			"path": "pages/user/user-assets/coupons/index"
+		},
+		{
+			"path": "pages/user/user-assets/integral/index"
+		},
+		{
+			"path": "pages/user/user-assets/integral/draw"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/index"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/recharge"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/withdraw"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/fund-record"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/fund-locked"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/fund-integral"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/fund-recharge"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/fund-withdraw"
+		},
+		{
+			"path": "pages/user/user-assets/wallet/settlement"
+		},
+		{
+			"path": "pages/notify-center/index"
+		},
+		{
+			"path": "pages/notify-center/show"
+		},
+		{
+			"path": "pages/user/steam/steam-setting"
+		},
+		{
+			"path": "pages/user/steam/steam-refresh-token"
+		},
+		{
+			"path": "pages/user/steam/bind-steam"
+		},
+		{
+			"path": "pages/user/steam/unbind-steam"
+		},
+		{
+			"path": "pages/user/steam/inventory-setting"
+		},
+		{
+			"path": "pages/user/steam/steam-trade-url"
+		},
+		{
+			"path": "pages/user/steam/steam-api-key"
+		},
+		{
+			"path": "pages/user/settings/index"
+		},
+		{
+			"path": "pages/user/settings/edit-nickname"
+		},
+		{
+			"path": "pages/user/settings/edit-password"
+		},
+		{
+			"path": "pages/user/user-shop/index",
+			"style": {
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/shop/sale-manage/sales-record"
+		},
+		{
+			"path": "pages/shop/order-manage/my-purchase"
+		},
+		{
+			"path": "pages/shop/order-manage/order-purchase-detail"
+		},
+		{
+			"path": "pages/shop/order-manage/receive-goods"
+		},
+		{
+			"path": "pages/shop/buying/index"
+		},
+		{
+			"path": "pages/shop/buying/product-buying"
+		},
+		{
+			"path": "pages/shop/buying/update-price"
+		},
+		{
+			"path": "pages/shop/buying/purchase-setting"
+		},
+		{
+			"path": "pages/user/guard/2fa-token"
+		},
+		{
+			"path": "pages/auth/login"
+		},
+		{
+			"path": "pages/auth/steam"
+		},
+		{
+			"path": "pages/auth/forget"
+		},
+		{
+			"path": "pages/auth/token-recovery"
+		},
+		{
+			"path": "pages/product-market/product-template-detail",
+			"style": {
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/product-market/csgo/product-detail",
+			"style": {
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/product-market/dota2/product-detail",
+			"style": {
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/shop/sale-manage/purchase"
+		},
+		{
+			"path": "pages/shop/sale-manage/supply"
+		},
+		{
+			"path": "pages/user/user-shop/my-collect"
+		},
+		{
+			"path": "pages/system-settings/language"
+		},
+		{
+			"path": "pages/system-settings/server-list"
+		},
+		{
+			"path": "pages/system-settings/auth-debug"
+		},
+		{
+			"path" : "pages/user/steam/steam-simulate-login",
+			"style": {
+			    "navigationBarTitleText": "Steam模拟登录"
+			  }
+		},
+		{
+			"path" : "pages/product-market/tf2/product-detail",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/user/user-assets/wallet/fund-locked-detail",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		}
+		
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#fff",
+		"backgroundColor": "#FFFFFF",
+		"navigationStyle": "custom",
+		"app-plus": {
+			"scrollIndicator": "none",
+			"softinputmode": "adjustResize",
+			"bounce": "vertical",
+			"safearea": {
+				"bottom": {
+					"offset": "none"
+				}
+			}
+		}
+	},
+	"tabBar": {
+		"spacing": "5px",
+		"height": "50px",
+		"color": "#616161",
+		"selectedColor": "#0066CC",
+		"backgroundColor": "#FFFFFF",
+		"list": [{
+				"pagePath": "pages/home",
+				"text": "Home",
+				"iconPath": "static/image/tabbar/home.png",
+				"selectedIconPath": "static/image/tabbar/home-active.png"
+			},
+			{
+				"pagePath": "pages/shop/sale-manage/inventory-manage",
+				"text": "Inventory",
+				"iconPath": "static/image/tabbar/inventory.png",
+				"selectedIconPath": "static/image/tabbar/inventory-active.png"
+			},
+			{
+				"pagePath": "pages/shop/shop-manage/index",
+				"text": "Sell",
+				"iconPath": "static/image/tabbar/shop.png",
+				"selectedIconPath": "static/image/tabbar/shop-active.png"
+			},
+			{
+				"pagePath": "pages/user/user-center",
+				"text": "My",
+				"iconPath": "static/image/tabbar/my.png",
+				"selectedIconPath": "static/image/tabbar/my-active.png"
+			}
+		]
+	},
+	"uniIdRouter": {},
+	"easycom": {
+		"^u-(.*)": "@/uni_modules/uview-ui/components/u-$1/u-$1.vue"
+	}
+}

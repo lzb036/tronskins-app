@@ -1,0 +1,153 @@
+<!-- 我的权益 -->
+<template>
+	<scroll-view :scroll-y="true" class="container">
+		<view class="interest-box">
+			<text class="title">{{ i18n.t('app.user.equity.vested') }}</text>
+			<ul class="interest-list">
+				<li class="interest-item" :style="getItemStyle(vested)" v-for="(vested, index) in vestedList"
+					:key="index">
+					<view class="header">
+						<text class="lable">{{ i18n.t(vested.label) }}</text>
+						<text class="item-type">{{ i18n.t(vested.type) }}</text>
+					</view>
+					<text class="content">{{ i18n.t(vested.content) }}</text>
+				</li>
+			</ul>
+		</view>
+		<view class="interest-box">
+			<text class="second-title">{{ i18n.t('app.user.equity.not_owned') }}</text>
+			<ul class="interest-list">
+				<li class="interest-item" :style="getItemStyle(unowned)" v-for="(unowned, index) in unownedList" :key="index">
+					<view class="header">
+						<text class="lable">{{ i18n.t(unowned.label) }}</text>
+						<text class="item-type">{{ i18n.t(unowned.type) }}</text>
+					</view>
+					<text class="content">{{ i18n.t(unowned.content) }}</text>
+				</li>
+			</ul>
+		</view>
+	</scroll-view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				vestedList: [{
+						label: 'app.user.equity.price_trend',
+						type: 'app.user.integral.exchange',
+						content: 'app.user.equity.price_trend_explain',
+						background: '#fb8402'
+					},
+					{
+						label: 'app.user.equity.card',
+						type: 'app.user.integral.exchange',
+						content: 'app.user.equity.card_explain',
+						background: '#752d17'
+					}
+				],
+				unownedList: [{
+						label: 'app.user.equity.price_trend',
+						type: 'app.user.integral.exchange',
+						content: 'app.user.equity.price_trend_explain',
+						background: '#909090'
+					},
+					{
+						label: 'app.user.equity.identification',
+						type: 'app.user.integral.exchange',
+						content: 'app.user.equity.identification_explain',
+						background: '#909090'
+					},
+					{
+						label: 'app.user.equity.card',
+						type: 'app.user.integral.exchange',
+						content: 'app.user.equity.card_explain',
+						background: '#909090'
+					},
+					{
+						label: 'app.user.equity.commission_free',
+						type: 'app.user.integral.exchange',
+						content: 'app.user.equity.commission_free_explain',
+						background: '#909090'
+					},
+				]
+			}
+		},
+		methods: {
+			getItemStyle(item) {
+				return {
+					background: item.background
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+	.container {
+		width: 750rpx;
+		height: 1200rpx;
+		padding: 20rpx;
+	}
+
+	.interest-box {
+		width: 710rpx;
+		padding: 0;
+
+		.title {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			font-weight: bold;
+			text-align: left;
+			margin: 0 0 10rpx;
+		}
+		
+		.second-title{
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			font-weight: bold;
+			text-align: left;
+			margin: 20rpx 0;
+		}
+	}
+
+	.interest-item {
+		width: 710rpx;
+		padding: 50rpx 40rpx;
+		margin: 20rpx 0 16rpx;
+		border-radius: 5rpx;
+		
+		.header {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+			margin-bottom: 10rpx;
+
+			.lable {
+				color: $app-background;
+				font-size: $font-size-md;
+			}
+
+			.item-type {
+				text-align: center;
+				border-radius: 20rpx;
+				background: $app-text-primary;
+				color: $app-background;
+				font-size: $font-size-xs;
+				padding: 10rpx 20rpx;
+				margin-left: 10rpx;
+				opacity: 0.5;
+			}
+		}
+
+		.content {
+			color: $app-background;
+			font-size: $font-size-sm;
+		}
+	}
+</style>

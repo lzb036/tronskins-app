@@ -1,0 +1,175 @@
+<template>
+	<list ref="nvue-list-refresh" class="list-container" :style="{ height: listHeight + 'px'}">
+		<refresh @refresh="handleRefresh" :display="refresh ? 'show' : 'hide'">
+			<div class="loading-wrapper">
+				<loading-indicator class="load-icon" :animating="true"></loading-indicator>
+			</div>
+		</refresh>
+		<cell v-if="total == 0 || !total">
+			<u-empty :text="i18n.t('app.common.no_data')" icon="/static/image/no-data.png"></u-empty>
+		</cell>
+		<cell v-else v-for="(item, index) in dataList" :key="item.id || index">
+			<slot name="item" :item="item" :index="index"></slot>
+		</cell>
+		<loading @loading="handleLoadMore" :display="loading ? 'show' : 'hide'">
+			<div class="loading-wrapper">
+				<loading-indicator class="load-icon" :animating="true"></loading-indicator>
+			</div>
+		</loading>
+	</list>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+
+	export default {
+		props: {
+			dataList: {
+				type: Array,
+				default: () => []
+			},
+			// 强制要求高度
+			listHeight: {
+				type: Number,
+				default: 0
+			},
+			height: {
+				type: Number,
+				default: 0
+			},
+			total: {
+				type: Number,
+				default: null
+			},
+		},
+		data() {
+			return {
+				i18n: i18n,
+				isLogin: isLogin(),
+				refresh: false,
+				loading: false,
+				systemInfo: {}
+			}
+		},
+		created() {
+			this.systemInfo = uni.getSystemInfoSync();
+			// 总长度 - 导航栏 - 状态栏
+			this.listHeight = this.systemInfo.windowHeight - this.height - this.systemInfo.statusBarHeight;
+		},
+		watch: {
+			height(val, oldVal) {
+				if (val != oldVal) {
+					this.listHeight = this.systemInfo.windowHeight - val - this.systemInfo.statusBarHeight;
+				}
+			}
+		},
+		methods: {
+			handleRefresh() {
+				this.refresh = true;
+				setTimeout(() => {
+					this.$emit("refresh"); // 触发刷新事件
+					this.refresh = false;
+				}, 1000);
+			},
+			handleLoadMore() {
+				this.loading = true;
+				this.$refs["nvue-list-refresh"].resetLoadmore();
+				setTimeout(() => {
+					this.$emit("loadMore"); // 触发刷新事件
+					this.loading = false;
+				}, 1000);
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.base-no-data {
+		width: 750rpx;
+		height: 200rpx;
+		line-height: 200rpx;
+		text-align: center;
+		color: $app-text-thirdly;
+		font-size: $font-size-sm;
+	}
+
+	/* 统一使用 flex 布局 */
+	.list-container {
+		width: 750rpx;
+		display: flex;
+	}
+
+	/* 刷新容器样式 */
+	.refresh-wrapper {
+		width: 750rpx;
+		height: 120rpx;
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.refresh-icon {
+		width: 40rpx;
+		height: 40rpx;
+		margin-right: 20rpx;
+		transition: transform 0.3s;
+	}
+
+	.refresh-text {
+		font-size: $font-size-md;
+		color: $app-text-secondary;
+	}
+
+	/* 加载样式 */
+	.loading-wrapper {
+		padding: 40rpx 0;
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.load-icon {
+		width: 36rpx;
+		height: 36rpx;
+		margin-right: 16rpx;
+	}
+
+	.loading-text {
+		font-size: $font-size-md;
+		color: $app-text-thirdly;
+	}
+
+	/* 空状态样式 */
+	.empty-wrapper {
+		padding-top: 200rpx;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.empty-image {
+		width: 300rpx;
+		height: 300rpx;
+		margin-bottom: 40rpx;
+	}
+
+	.empty-text {
+		font-size: $font-size-lg;
+		color: $app-text-disabled;
+	}
+
+	/* 无更多数据样式 */
+	.no-more-wrapper {
+		padding: 40rpx 0;
+		align-items: center;
+	}
+
+	.no-more-text {
+		font-size: $font-size-md;
+		color: $app-text-disabled;
+	}
+</style>

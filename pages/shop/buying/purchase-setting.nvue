@@ -1,0 +1,82 @@
+<!-- 求购状态设置 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.trade.purchase.setting')" :autoBack="true" placeholder></u-navbar>
+		<view class="setting-container">
+			<text class="notify">{{ i18n.t('app.trade.purchase.tips') }}</text>
+			<view class="content">
+				<text class="label">{{ i18n.t('app.trade.purchase.status_online') }}</text>
+				<u-switch v-model="purchaseOnline" @change="changeStatus" size="20"></u-switch>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import { submitBuyStatusApi } from '@/api/modules/shop/shop-product.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				purchaseOnline: false,
+			}
+		},
+        onLoad(options) {
+			if (options.purchaseOnline) {
+				this.purchaseOnline = options.purchaseOnline === 'true';
+			}
+		},
+		methods: {
+			async changeStatus() {
+				try {
+					const res = await submitBuyStatusApi();
+					if (res.code == 0) {
+						uni.$u.toast(i18n.t('app.system.message.success'));
+                        uni.$emit('purchaseStatusChanged', this.purchaseOnline);
+					} else {
+					    this.purchaseOnline = !this.purchaseOnline;
+						uni.$u.toast(res.datas || i18n.t('app.system.message.operation_failed'));
+					}
+				} catch (error) {
+					this.purchaseOnline = !this.purchaseOnline;
+					uni.$u.toast(i18n.t('app.system.message.operation_failed'));
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.setting-container {
+		width: 750rpx;
+		background: $app-background;
+		padding: 0rpx 20rpx;
+	}
+
+	.notify {
+		width: 710rpx;
+		padding: 20rpx;
+		color: $app-text-thirdly;
+		background: $app-surface;
+		font-size: $font-size-md;
+		margin-bottom: 20rpx;
+	}
+
+	.content {
+		width: 710rpx;
+		padding: 20rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+
+		.label {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+	}
+</style>

@@ -1,0 +1,205 @@
+<template>
+	<view class="pending-shopment-item" v-if="item" @click="route()">
+		<base-item :style="getItemNums(item.nums)" :bg="getRarity()" :imageUrl="getImageUrl()" :width="180"
+			:num="item.nums"></base-item>
+		<view class="price-wrap">
+			<text class="market-name">{{getMarketName()}}</text>
+		</view>
+		<view class="right-wrap">
+			<text class="market-price">{{currencySymbol + ' ' + item.price}}</text>
+			<u-count-down :time="getItemDownTime(item)" format="HH:mm:ss"></u-count-down>
+		</view>
+		<view class="footer">
+			<text class="buy-btn" @click.stop="receiveSubmit($event)">{{ i18n.t('app.market.product.receive') }}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config/index.js';
+	import i18n from '@/utils/locales/i18n.js';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import {
+		OrderTradeofferReceiptApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		steamOnlineStateApi,
+	} from '@/api/modules/steam.js';
+	import {
+		setPushMessageDelive
+	} from '@/utils/storage/modules/push-message.js';
+
+	export default {
+		props: ['schemas', 'item', 'users'],
+		components: {
+			BaseItem,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+			}
+		},
+		methods: {
+			/**
+			 * 倒计时：收货
+			 * @param {number} type：1 => 出售
+			 * @param {number} type：2 => 供应
+			 * @param {number} status:1 =>
+			 * @param {number} status:2 => 待发货
+			 * @param {number} status:3 => 发货待确认
+			 */
+			getItemDownTime(item) {
+			    const createTime = item.change_time * 1000;
+			    const shippingHours = this.getShippingHours(item);
+			    const deadline = createTime + shippingHours * 3600 * 1000;
+			    return Math.max(0, deadline - Date.now());
+			},
+			getShippingHours(item) {
+			    if (item.status === 3) return 0.5;
+			    if (item.type === 2 && item.status === 2) return 0.5;
+			    if (item.type === 1 && item.status === 2) return 18;
+			    if (item.status === 4) return 18;
+			    return 18; // 默认
+			},
+			async receiveSubmit(e) {
+				e.stopPropagation();
+				try {
+					const steamStatus = await steamOnlineStateApi();
+					if (!steamStatus.datas) {
+						uni.$u.route('/pages/shop/order-manage/receive-goods', {
+							trade_offer_id: this.item.trade_offer_id
+						});
+						return;
+					}
+					const res = await OrderTradeofferReceiptApi({
+						id: this.item.id
+					});
+					uni.hideLoading();
+					if (res.code == 0) {
+						uni.$u.toast(i18n.t('app.system.message.success'));
+						this.$emit('reload');
+						setPushMessageDelive(false)
+					}
+				} catch (e) {
+					uni.hideLoading();
+					uni.$u.toast(e.message);
+				}
+			},
+			route() {
+				uni.$u.route('/pages/shop/order-manage/order-purchase-detail', {
+					item: encodeURIComponent(JSON.stringify(this.item)),
+					schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+					users: encodeURIComponent(JSON.stringify(this.users)),
+				});
+			},
+			getExterior() {
+				try {
+					return this.schemas[this.item.details[0].market_hash_name].tags.exterior
+				} catch (e) {
+
+				}
+			},
+			getRarity() {
+				try {
+					return this.schemas[this.item.details[0].market_hash_name].tags.rarity.color
+				} catch (e) {
+
+				}
+			},
+			getImageUrl() {
+				if (this.schemas && this.item) {
+					if (this.item.details[0]) {
+						return this.schemas[this.item.details[0].market_hash_name].image_url
+					}
+				}
+			},
+			getItemNums(num) {
+				if (num > 1) {
+					return {
+						'box-shadow': '-2rpx -2rpx 5rpx 1rpx #8c8c8c'
+					}
+				}
+			},
+			getMarketName() {
+				if (this.schemas && this.item) {
+					if (this.item.details[0]) {
+						return this.schemas[this.item.details[0].market_hash_name].market_name
+					}
+				}
+			},
+			createTime(item) {
+				return uni.$u.timeFormat(item.create_time, 'yyyy-mm-dd hh:MM');
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.pending-shopment-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding: 20rpx;
+		position: relative;
+		align-items: center;
+		border-bottom: 1rpx solid $app-surface;
+
+		.create-time {
+			width: 710rpx;
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			padding-bottom: 10rpx;
+		}
+
+		.price-wrap {
+			width: 400rpx;
+			padding-left: 20rpx;
+			margin-top: -10rpx;
+
+			.market-name {
+				width: 280rpx;
+				font-size: $font-size-md;
+				color: $app-text-secondary;
+			}
+		}
+
+		.market-price {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			padding-top: 20rpx;
+			font-weight: bold;
+		}
+
+		.right-wrap {
+			width: 120rpx;
+			display: flex;
+			flex-direction: column;
+			padding-left: 10rpx;
+			align-items: flex-end;
+			justify-content: center;
+		}
+
+		.buy-btn {
+			width: 130rpx;
+			color: $app-background;
+			padding: 8rpx 0;
+			font-size: $font-size-sm;
+			text-align: center;
+			background: $app-link;
+			border: 1rpx solid $app-link;
+			border-radius: 5rpx;
+		}
+
+		.footer {
+			width: 710rpx;
+			display: flex;
+			align-items: flex-end;
+			justify-content: center;
+			padding: 5rpx 0;
+		}
+	}
+</style>

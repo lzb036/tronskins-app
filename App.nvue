@@ -1,0 +1,90 @@
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import {
+		autoClean
+	} from '@/utils/storage'
+	import {
+		setTradeMessageShipping,
+		setPushMessageDelive,
+		setPushMessageReceive
+	} from '@/utils/storage/modules/push-message.js'
+	import {
+		AppTradeTotalApi
+	} from '@/api/modules/market.js'
+
+	export default {
+		onLaunch: function() {
+			// 👇 只在 App 平台注册推送监听
+			//#ifdef APP-PLUS
+			plus.push.addEventListener('click', (res) => {
+				let str = JSON.stringify(res);
+				let data = JSON.parse(str);
+				// 发货通知
+				if (data.title == i18n.t('app.system.message.order_shipping')) {
+					uni.switchTab({
+						url: '/pages/shop/shop-manage/index'
+					})
+					uni.$emit('update-trade-title')
+					uni.$emit('update-trade-message-shipping')
+				}
+				// 收货通知
+				if (data.title == i18n.t('app.system.message.order_receiving')) {
+					uni.$u.route({
+						url: '/pages/shop/order-manage/my-purchase'
+					})
+				}
+			}, false);
+			//#endif
+
+			// 定时拉取交易数据（所有平台都可运行，因为只用 uni / API）
+			setInterval(async () => {
+				try {
+					const res = await AppTradeTotalApi();
+					if (res.statusCode == 200) {
+						setTradeMessageShipping({
+							sendMark: res.datas?.sendMark || 0,
+							csgoTotal: res.datas?.csgoMark || 0,
+							tf2Total: res.datas?.tf2Mark || 0,
+							dota2Total: res.datas?.dota2Mark || 0,
+						})
+						if (res.datas.allMark > 0) {
+							uni.showTabBarRedDot({
+								index: 2
+							})
+						} else {
+							uni.hideTabBarRedDot({
+								index: 2
+							})
+						}
+						setPushMessageDelive(res.datas.sendMark > 0);
+						if (res.datas.buyMark > 0) {
+							setPushMessageReceive(true);
+							uni.showTabBarRedDot({
+								index: 3
+							})
+						} else {
+							setPushMessageReceive(false);
+							uni.hideTabBarRedDot({
+								index: 3
+							})
+						}
+						uni.$emit('update-trade-message-shipping');
+						uni.$emit('update-trade-message-delive');
+					}
+				} catch (error) {
+					console.error('获取交易统计数据失败:', error);
+				}
+			}, 30000)
+		},
+		onShow: function() {
+			console.log('App Show')
+		},
+		onHide: function() {
+			console.log('App Hide')
+		},
+	}
+</script>
+
+<style lang="scss">
+	/*每个页面公共css */
+</style>

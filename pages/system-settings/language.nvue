@@ -1,0 +1,54 @@
+<!-- 多语言 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.setting.multilingual')" :autoBack="true" fixed placeholder></u-navbar>
+		<u-cell :border="false" v-for="lan in list" :key="lan.value" @click="changeLan(lan)">
+			<text slot="title" class="lan-name">{{ lan.label }}</text>
+			<u-icon slot="value" name="checkmark" v-if="curLan == lan.value"></u-icon>
+		</u-cell>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		getLanguage,
+		setLanguage
+	} from '@/utils/storage/modules/domain.js';
+	import config from '@/config/index.js';
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				list: config.languageList,
+				curLan: getLanguage()
+			}
+		},
+		methods: {
+			changeLan(item) {
+				if (item.value != this.curLan) {
+					uni.showModal({
+						title: i18n.t(item.tip),
+						confirmText: i18n.t('app.common.confirm'),
+						cancelText: i18n.t('app.common.cancel'),
+						success: async (res) => {
+							if (res.confirm) {
+								setLanguage(item.value);
+								i18n._refreshMessages();
+								plus.runtime.restart();
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.lan-name {
+		font-size: $font-size-md;
+		color: $app-text-thirdly;
+	}
+</style>

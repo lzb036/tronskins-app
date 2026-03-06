@@ -1,0 +1,405 @@
+<!-- 用户中心 -->
+<template>
+	<view class="user-container" :style="{paddingTop:getSystemInfo().statusBarHeight + 'px',backgroundColor:'#6471bf'}">
+		<view class="statusbar-content">
+			<u-icon class="icon" name="scan" size="22" color="#fff" @click="scanCode()"></u-icon>
+			<view class="icon-box" @click="routeNotify()">
+				<u-icon class="icon" name="bell" size="22" color="#fff"></u-icon>
+				<text v-if="isDelive" class="bell-dot"></text>
+			</view>
+			<u-icon class="icon" name="setting" size="22" color="#fff" @click="routeSetting()"></u-icon>
+		</view>
+		<view class="user-header">
+			<view class="left" @click="routeLogin()">
+				<image class="img" :src="userInfo ? getImageLocal(userInfo.avatar) : '/static/image/user/none.png'">
+				</image>
+			</view>
+			<view class="right" v-if="!userInfo" @click="routeLogin()">
+				<text class="login-title">{{i18n.t('app.user.login.nologin')}}</text>
+			</view>
+			<view class="right" v-if="userInfo">
+				<text
+					class="login-title">{{userInfo.nickname ? userInfo.nickname : i18n.t('app.user.setting.nickname_not_set')}}</text>
+				<text v-if="userInfo.config" :class="userInfo.config.logged?'online-dot dot':'offline-dot dot'"></text>
+			</view>
+		</view>
+		<wallet-item :userInfo="userInfo"></wallet-item>
+		<list>
+			<cell class="tool">
+				<text class="title">{{i18n.t('app.user.menu.deal')}}</text>
+				<view class="tool-container">
+					<view class="tool-item flex-4" v-for="(item,index) in tradeList" :key="index"
+						@click="routerPath(item)">
+						<image class="tool-image" :src="item.iconPath"></image>
+						<text class="tool-name">{{i18n.t(item.label)}}</text>
+						<text v-if="isReceive&&item.label=='myDealBuy'" class="receive-dot"></text>
+					</view>
+				</view>
+			</cell>
+			<cell class="tool">
+				<text class="title">{{i18n.t('app.user.server.title')}}</text>
+				<view class="tool-container">
+					<view class="tool-item flex-4" v-for="(item,index) in serverList" :key="index"
+						@click="routerPath(item)">
+						<image class="tool-image" :src="item.iconPath"></image>
+						<text class="tool-name">{{i18n.t(item.label)}}</text>
+					</view>
+				</view>
+			</cell>
+		</list>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import WalletItem from '@/components/wallet/WalletItem.nvue';
+	import {
+		userInfoApi
+	} from '@/api/modules/user.js';
+	import {
+		getAppUserInfo,
+		getUserToken,
+		setAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		isLogin,
+		scanLogin
+	} from '@/services/user.js';
+	import {
+		setSysParamsCookie
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		get2FAList,
+		set2FAList
+	} from '@/utils/storage/modules/2fa-token.js';
+	import {
+		getPushMessageDelive,
+		getPushMessageReceive
+	} from '@/utils/storage/modules/push-message.js';
+	import {
+		GetSysParamsApi
+	} from '@/api/modules/shop/shop-product.js';
+
+	export default {
+		components: {
+			WalletItem
+		},
+		computed: {
+			isLogin() {
+				return !!getUserToken(); // ✅ 每次访问都重新读取 token
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				userInfo: null,
+				isLogin: isLogin(),
+				serverList: [{
+						label: 'app.user.server.help',
+						iconPath: '/static/image/user/icon/help.png',
+						path: '/pages/help-center/index',
+						auth: false,
+					},
+					{
+						label: 'app.user.server.coupon',
+						iconPath: '/static/image/user/icon/bond.png',
+						path: '/pages/user/user-assets/coupons/index',
+						auth: false,
+					},
+				],
+				tradeList: [{
+						label: 'app.user.menu.buy',
+						iconPath: '/static/image/user/icon/buying.png',
+						path: '/pages/shop/order-manage/my-purchase',
+						auth: true,
+					}, {
+						label: 'app.user.menu.sale',
+						iconPath: '/static/image/user/icon/sale.png',
+						path: '/pages/shop/sale-manage/sales-record',
+						auth: true,
+					}, {
+						label: 'app.user.menu.purchase',
+						iconPath: '/static/image/user/icon/purchase.png',
+						path: '/pages/shop/buying/index',
+						auth: true,
+					},
+					{
+						label: 'app.user.menu.collection',
+						iconPath: '/static/image/user/icon/collect.png',
+						path: '/pages/user/user-shop/my-collect',
+						auth: true,
+					}, {
+						label: 'app.user.menu.guard',
+						iconPath: '/static/image/user/icon/guard.png',
+						path: '/pages/user/guard/2fa-token',
+						auth: false,
+					},
+					{
+						label: 'app.user.menu.shop',
+						iconPath: '/static/image/user/icon/shop.png',
+						path: '/pages/user/user-shop/index',
+						auth: true,
+					},
+				],
+				isDelive: getPushMessageDelive(),
+				isReceive: getPushMessageReceive()
+			}
+		},
+		onShow() {
+			this.getUserInfo();
+			this.isLogin = isLogin();
+		},
+		created() {
+			this.userInfo = getAppUserInfo();
+			this.getUserInfo();
+			this.getSysParmas();
+		},
+		mounted() {
+			uni.$on('update-trade-message-delive', () => {
+				this.isDelive = getPushMessageDelive();
+				this.isReceive = getPushMessageReceive();
+			});
+		},
+		methods: {
+			async getUserInfo() {
+				try {
+					const res = await userInfoApi();
+					if (res.code == 0) {
+						this.userInfo = res.datas;
+						setAppUserInfo(res.datas);
+						// 2fa是否已经绑定
+						this.is2FABind();
+					} else {
+						this.userInfo = null;
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			is2FABind() {
+				// uni.$u.throttle(() => {
+				// 	const guardList = get2FAList();
+				// 	console.log(this.userInfo)
+				// 	// 1. 定义新条目
+				// 	const newGuardInfo = {
+				// 		appUse: this.userInfo.appUse,
+				// 		userId: this.userInfo.id,
+				// 		showEmail: this.userInfo.config.showEmail,
+				// 		loggerShowName: this.userInfo.loggerShowName,
+				// 		secret: ''
+				// 	};
+				// 	console.log(newGuardInfo)
+				// 	// 2. 检查是否已存在
+				// 	const isDuplicate = guardList.some(guard =>
+				// 		guard.userId === newGuardInfo.userId &&
+				// 		guard.appUse === newGuardInfo.appUse
+				// 	);
+
+				// 	// 3. 更新列表
+				// 	if (!isDuplicate) {
+				// 		const newList = [...guardList, newGuardInfo]; // 避免引用污染
+				// 		set2FAList(newList);
+				// 	}
+				// }, 10000)
+			},
+			getImageLocal(avatar) {
+				let imagePath = 'https://www.tronskins.com/fms/image';
+				if (!avatar || typeof avatar !== 'string') {
+					return '/static/image/user/none.png';
+				}
+				return avatar.startsWith("http") ? avatar : imagePath + avatar;
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync();
+			},
+			async getSysParmas() {
+				const res = await GetSysParamsApi();
+				if (res.code == 0) {
+					setSysParamsCookie(res.datas);
+				}
+			},
+			routerPath(item) {
+				if (item.auth && !this.isLogin) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return
+				}
+				uni.$u.route({
+					url: item.path,
+				})
+			},
+			scanCode() {
+				scanLogin();
+
+			},
+			routeLogin() {
+				if (this.userInfo) {
+					return
+				}
+				uni.$u.route({
+					url: '/pages/auth/login',
+				})
+			},
+			routeSetting() {
+				uni.navigateTo({
+					url: '/pages/user/settings/index',
+					fail: (e) => {
+						console.log(e)
+					}
+				});
+			},
+			routeNotify() {
+				uni.$u.route({
+					url: '/pages/notify-center/index',
+				})
+
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../theme.scss";
+
+	.statusbar-content {
+		width: 750rpx;
+		padding: 10rpx 0;
+		display: flex;
+		justify-content: flex-end;
+		flex-direction: row;
+		background-color: $app-background-blue;
+
+		.icon {
+			width: 70rpx;
+		}
+
+		.icon-box {
+			width: 70rpx;
+			align-items: center;
+
+			.bell-dot {
+				width: 8rpx;
+				height: 8rpx;
+				position: absolute;
+				background: $app-danger;
+				right: 30rpx;
+				top: 2rpx;
+				border-radius: 50rpx;
+			}
+		}
+	}
+
+	.receive-dot {
+		width: 12rpx;
+		height: 12rpx;
+		position: absolute;
+		background: $app-danger;
+		right: 46rpx;
+		top: 2rpx;
+		border-radius: 50rpx;
+	}
+
+	.user-header {
+		width: 750rpx;
+		padding: 40rpx 0 40rpx 0;
+		background-color: $app-background-blue;
+		box-shadow: 0 0 10rpx $app-background-blue;
+		display: flex;
+		flex-direction: row;
+
+		.left {
+			width: 200rpx;
+
+			.img {
+				width: 100rpx;
+				height: 100rpx;
+				border-radius: 100rpx;
+				margin-left: 60rpx;
+			}
+		}
+
+		.right {
+			width: 550rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.label {
+				font-size: $font-size-lg;
+				color: $app-background;
+				padding-bottom: 10rpx;
+			}
+
+			.login-title {
+				width: 350rpx;
+				lines: 1;
+				text-overflow: ellipsis;
+				font-size: $font-size-lg;
+				color: $app-background;
+			}
+
+			.dot {
+				width: 10rpx;
+				height: 10rpx;
+				margin-top: -22rpx;
+				margin-left: 4rpx;
+				border-radius: 50rpx;
+			}
+
+			.online-dot {
+				background: $app-success;
+			}
+
+			.offline-dot {
+				background: gray;
+			}
+		}
+	}
+
+	.tool {
+		width: 750rpx;
+		padding: 10rpx 20rpx;
+		background-color: $app-background;
+
+		.title {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			padding: 20rpx 0;
+			border-bottom: 1rpx solid $app-surface-elevated;
+		}
+	}
+
+	.tool-container {
+		width: 750rpx;
+		padding: 20rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+
+		.flex-3 {
+			width: 220rpx;
+		}
+
+		.flex-4 {
+			width: 165rpx;
+		}
+
+		.tool-item {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			.tool-name {
+				height: 60rpx;
+				text-align: center;
+				color: $app-background-black;
+				font-size: $font-size-md;
+				margin-top: 15rpx;
+			}
+
+			.tool-image {
+				width: 56rpx;
+				height: 56rpx;
+			}
+		}
+	}
+</style>

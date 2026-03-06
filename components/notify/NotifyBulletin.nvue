@@ -1,0 +1,143 @@
+<template>
+	<view class="container">
+		<list-refresh
+		  :dataList="list"
+		  :total="total"
+		  height="44"
+		  @refresh="refresh"
+		  @loadMore="loadMore">
+		  <template #item="{ item }">
+		    <view class="table-content" @click="readSubmit(item)">
+		      <view class="header">
+		        <text class="time">{{ item.createTime }}</text>
+		        <view :class="item.isRead ? 'not-dot' : 'dot'" />
+		      </view>
+		      <text class="context">{{ item.title }}</text>
+		    </view>
+		  </template>
+		</list-refresh>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import {
+		GetNoticeListApi,
+		ReadNotifyApi
+	} from "@/api/modules/notify.js";
+
+	export default {
+		props: ['appId'],
+		components: {
+			ListRefresh
+		},
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+				total:0,
+				pager: {
+					page: 1,
+					pageSize: 10,
+				}
+			}
+		},
+		mounted() {
+			this.getQueryList();
+		},
+		methods: {
+			async getQueryList() {
+				let params = {
+					page: this.pager.page,
+					pageSize: this.pager.pageSize
+				}
+				const res = await GetNoticeListApi(params);
+				if (res) {
+					this.list = this.list.concat(res.datas.list);
+					this.total = res.datas.pager.total;
+					this.list.forEach(item => {
+						item.createTime = uni.$u.timeFormat(item.createTime * 1000,
+							'yyyy-mm-dd hh:MM:ss');
+					});
+				}
+			},
+			async readSubmit(item) {
+				const res = await ReadNotifyApi({
+					id: item.id
+				});
+				if (res.code == 0) {
+					this.refresh();
+					uni.$u.route('/pages/notify-center/show', {
+						id: item.id
+					});
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getQueryList();
+			},
+			refresh() {
+				this.list = [];
+				this.pager.page = 1;
+				this.getQueryList();
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	
+	.container {
+		width: 750rpx;
+		padding-top: 10rpx;
+	}
+	
+	.table-content {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: space-between;
+		padding: 30rpx 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+	
+		.header {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			margin-bottom: 18rpx;
+	
+			.time {
+				font-size: $font-size-sm;
+				text-align: left;
+				color: $app-text-thirdly;
+				margin-right: 10rpx;
+			}
+	
+			.dot {
+				width: 10rpx;
+				height: 10rpx;
+				border-radius: 50rpx;
+				background: $app-danger-dark;
+				margin-right: 10rpx;
+				margin-bottom: 20rpx;
+			}
+	
+			.not-dot {
+				width: 10rpx;
+				height: 10rpx;
+				border-radius: 50rpx;
+				background: $app-background;
+				margin-bottom: 20rpx;
+			}
+		}
+	
+		.context {
+			text-align: left;
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+	}
+</style>

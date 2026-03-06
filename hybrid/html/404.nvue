@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Error 404</title>
+		<style>
+			div {
+				height: 50%;
+				margin: 50% auto;
+			}
+
+			p {
+				color: #4a4a4a;
+				font-size: 16px;
+				text-align: center;
+			}
+		</style>
+	</head>
+	<body>
+		<div>
+			<p>The page you requested cannot be opened. </p>
+			<p>Please use an accelerator or VPN and try again.</p>
+		</div>
+	</body>
+</html>

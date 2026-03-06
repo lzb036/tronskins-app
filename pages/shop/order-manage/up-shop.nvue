@@ -1,0 +1,1073 @@
+<!-- 饰品出售 -->
+<template>
+	<view class="up-shop-conter">
+		<u-navbar :autoBack="true" placeholder :title="i18n.t('app.market.product.for_sale')"
+			:right-text="i18n.t('app.inventory.pricing')" @rightClick="onePricing()"></u-navbar>
+		<list :style="{height: systemInfo.windowHeight - systemInfo.statusBarHeight - height + 'px'}">
+			<cell v-for="(item,index) in showList" :key="item.id" class="up-item">
+				<view class="item-header">
+					<view @click="goGoodsDetail(item)">
+						<base-item :item="item" :schema="getSchema(item)" :width="180"></base-item>
+						<gem-list class="item-gem-list" v-if="item.gemList&&item.gemList.length > 0"
+							:list="item.gemList"></gem-list>
+					</view>
+					<view class="item-header-title">
+						<view class="left" :style="getTitleStyle()">
+							<text class="market-name" :style="getTitleStyle()"
+								@click="goGoodsDetail(item)">{{getSchema(item).market_name}}</text>
+							<view class="appraise" :style="getTitleStyle()">
+								<text class="label">{{i18n.t('app.inventory.price_appraise')}}:</text>
+								<text class="value">${{getReferencePrice(item)}}</text>
+							</view>
+						</view>
+						<view class="market-info" :style="getInfoStyle()">
+							<text v-if="!isCombine" class="view-market"
+								@click="goGoodsDetail(item)">{{ i18n.t('app.market.view') }}></text>
+							<text v-if="isCombine" class="item-nums">x{{ item.count }}</text>
+						</view>
+					</view>
+				</view>
+				<view class="item-wear" v-if="item.paint_wear > 0">
+					<view class="paint-wear">
+						<text class="label">{{i18n.t('app.market.csgo.abradability')}}:{{item.paint_wear }}</text>
+						<WearProgressBar :paintWear="item.paint_wear" :width="400"></WearProgressBar>
+					</view>
+					<sticker-list class="item-sticker-list" v-if="item.stickers&&item.stickers.length > 0"
+						:list="item.stickers" :schemas="schemas"></sticker-list>
+				</view>
+				<view class="item-price">
+					<text class="sell-price">{{i18n.t('app.inventory.price_selling')}}</text>
+					<input class="sell-value" type="digit" inputmode="decimal" v-model="item.amount"
+						@focus="changeListHeight(index)" @input="checkInputPrice($event,item)"
+						@blur="calibrationPrice($event,item)" :placeholder="i18n.t('app.inventory.selling_placeholder')"></input>
+					<!-- 	<u-button type="primary" size="mini" class="up-pricing" @click="goPricing(item)" plain
+						:text="i18n.t('app.inventory.pricing_reference')"></u-button> -->
+				</view>
+			</cell>
+		</list>
+		<view style="height: 60rpx;"></view>
+		<view class="up-shop-footer">
+			<view class="left">
+				<text class="text">{{i18n.t('app.inventory.upshop.expected_income')}}:</text>
+				<text class="value">{{ currencySymbol+totalPrice }}</text>
+			</view>
+			<view class="right">
+				<view :class="getAllowCombine?'check-box':'check-box'" @click="combineList()">
+					<view :class="isAllowCombine?'icons':'forbid-icons'">
+						<u-icon :color="isCombine ? '#fd7f2d':'#fff'" name="checkbox-mark" size="8"></u-icon>
+					</view>
+					<text :class="isAllowCombine?'label': 'forbid-label'">{{i18n.t('app.inventory.upshop.combining')}}</text>
+				</view>
+				<button class="up-submit" type="primary" size="mini"
+					@click="openConfim()">{{i18n.t('app.inventory.upshop.text')}}</button>
+			</view>
+		</view>
+		<u-popup :show="show" @close="show = false" @open="show = true">
+			<view v-if="showList.length > 0">
+				<text class="popup-title">{{i18n.t('app.inventory.upshop.confirm_title') + ' ('+ this.list.length + ')'}}</text>
+				<list class="up-price-confirm" :style="{maxHeight: (systemInfo.windowHeight * 0.7) + 'px'}">
+					<cell v-for="item in showList" :key="item.id" class="up-confirm-item">
+						<view class="header">
+							<base-item :item="item" :schema="getSchema(item)" :width="120"></base-item>
+							<view class="title">
+								<text class="market-name">{{getSchema(item).market_name}}</text>
+							</view>
+						</view>
+						<view class="price">
+							<text class="sell-left">{{i18n.t('app.inventory.price_selling')}}</text>
+							<text class="sell-center"></text>
+							<text
+								:class="[item.priceWarning ? 'sell-right red':'sell-right']">{{item.priceWarning ? i18n.t("app.inventory.pricing_abnormal") + item.amount : item.amount}}</text>
+						</view>
+					</cell>
+				</list>
+				<view class="popup-btn-wrap">
+					<u-button class="cancel-btn" type="primary" :plain="true" :text="i18n.t('app.common.cancel')"
+						@click="show = false"></u-button>
+					<u-button class="confirm-btn" type="primary" :text="i18n.t('app.common.confirm')"
+						@click="isUpShop=true"></u-button>
+				</view>
+			</view>
+		</u-popup>
+		<!-- 上架 提示 总收入 -->
+		<u-popup :show="isUpShop" mode="center" @close="isUpShop = false" @open="isUpShop = true">
+			<view class="upshop-box">
+				<text class="popup-title">{{ i18n.t('app.inventory.upshop.confirm_title') }}</text>
+				<view :class="lan== 'zh_CN'?'content':'en-content'">
+					<text class="label">{{i18n.t('app.inventory.upshop.nums')}}</text>
+					<view class="right">
+						<text class="value text">{{ getTotalNum() }}</text>
+						<text class="unit">{{i18n.t('app.market.unit_qty')}}</text>
+					</view>
+				</view>
+				<view :class="lan== 'zh_CN'?'content':'en-content'">
+					<text class="label">{{i18n.t('app.inventory.upshop.handling_charge')}}</text>
+					<view class="right">
+						<text class="value text">{{ getTotalFee() }}</text>
+						<text class="unit">{{ currencySymbol }}</text>
+					</view>
+				</view>
+				<view :class="lan== 'zh_CN'?'content':'en-content'">
+					<text class="label">{{i18n.t('app.inventory.upshop.expected_income')}}</text>
+					<view class="right">
+						<text class="income text">{{ getTotalIncome() }}</text>
+						<text class="unit">{{ currencySymbol }}</text>
+					</view>
+				</view>
+				<view :class="lan== 'zh_CN'?'content':'en-content'">
+					<text class="label">{{i18n.t('app.inventory.upshop.expected_reward')}}</text>
+					<view class="right">
+						<text class="value text">{{ getTotalPoints()}}</text>
+						<text class="unit">{{i18n.t('app.user.integral.unit')}}</text>
+					</view>
+				</view>
+				<view class="popup-btn-wrap">
+					<u-button class="cancel-btn" type="primary" :plain="true" :text="i18n.t('app.common.cancel')"
+						@click="isUpShop = false"></u-button>
+					<u-button class="confirm-btn" type="primary" :text="i18n.t('app.common.confirm')"
+						@click="upSubmit()"></u-button>
+				</view>
+			</view>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import config from '@/config';
+	import BaseItem from '@/components/game-item/index.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import StickerList from '@/components/game-item/StickerList.nvue';
+	import GemList from '@/components/game-item/GemList.nvue';
+	import {
+		OrderItemUpApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		GetUserShopInfoApi
+	} from '@/api/modules/shop/shop.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		GetSysParamsApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		steamOnlineStateApi
+	} from '@/api/modules/steam.js';
+
+	export default {
+		components: {
+			BaseItem,
+			WearProgressBar,
+			StickerList,
+			GemList,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				schemas: {},
+				list: [],
+				enhancedData: [],
+				showList: [],
+				isCombine: false, // 是否合并
+				show: false,
+				systemInfo: {},
+				isUpShop: false,
+				es_min_price: null,
+				es_min_fee: null,
+				feeRate: null,
+				height: 90,
+				keyboardHeight: 0,
+				isAllowCombine: false
+			}
+		},
+		computed: {
+			totalPrice() {
+				let price = 0;
+				this.showList.forEach(item => {
+					if (!this.isCombine) {
+						if (item.amount && Number(item.amount) > 0) {
+							price += Number(item.amount);
+						} else {
+							price += 0;
+						}
+					} else {
+						if (item.amount > 0) {
+							price += item.amount * item.count;
+						} else {
+							price += 0;
+						}
+					}
+				})
+				return price.toFixed(2);
+			},
+			canSubmit() {
+				if (this.showList.length === 0) return false;
+				for (let item of this.showList) {
+					const price = Number(item.amount);
+					if (!price || price <= 0 || isNaN(price)) {
+						return false;
+					}
+				}
+				return true;
+			},
+			getAllowCombine() {
+				if (this.isCombine) {
+					this.isAllowCombine = true;
+					return;
+				}
+				if (this.showList && this.showList.length < 2) {
+					this.isAllowCombine = false;
+					return;
+				}
+				let maxlength = 0;
+				this.showList.forEach(item => {
+					if (!this.isCombine) {
+						let tempLength = this.showList.filter(i => {
+							return i.schema_id == item.schema_id;
+						}).length;
+						maxlength = tempLength && (tempLength > maxlength) ? tempLength : maxlength;
+						if (maxlength && maxlength >= 2) {
+							this.isAllowCombine = true;
+							return;
+						} else {
+							this.isAllowCombine = false;
+							return;
+						}
+					}
+				})
+			}
+		},
+		onShow() {
+			this.getShopInfo();
+			this.getShopParams();
+			uni.onKeyboardHeightChange((res) => {
+				this.keyboardHeight = res.height;
+			});
+		},
+		onLoad(options) {
+			this.systemInfo = uni.getSystemInfoSync();
+			this.list = JSON.parse(decodeURIComponent(options.list));
+			this.schemas = JSON.parse(decodeURIComponent(options.schemas));
+			this.showList = this.isCombine ? this.enhancedData : this.list;
+			this.enhancedData = this.mergeItems(this.showList);
+			console.log(this.schemas)
+			console.log(this.list)
+		},
+		methods: {
+			async getShopInfo() {
+				const res = await GetUserShopInfoApi({
+					uuid: getAppUserInfo().shop.uuid
+				});
+				if (res.code != 0) return;
+				if (!res.datas.isOnline) {
+					uni.showModal({
+						title: this.i18n.t('app.system.tips.title'),
+						content: this.i18n.t('app.user.shop.message.offline'),
+						confirmText: this.i18n.t('app.common.confirm'),
+						cancelText: this.i18n.t('app.common.cancel'),
+						success: (res) => {
+							if (res.confirm) {
+								uni.$u.route('/pages/shop/shop-manage/setting');
+								return;
+							}
+						}
+					})
+				}
+			},
+			goGoodsDetail(item) {
+				uni.$u.route('/pages/product-market/product-template-detail', {
+					schema_id: item.schema_id,
+					appid: !this.isCombine ? item.app_id : item.items[0].app_id
+				});
+			},
+			getSchema(item) {
+				try {
+					return this.schemas[item.schema_id]
+				} catch (e) {
+
+				}
+			},
+			getTitleStyle() {
+				if (!this.isCombine) {
+					return {
+						width: '360rpx'
+					}
+				}
+				return {
+					width: '400rpx'
+				}
+			},
+			getInfoStyle() {
+				if (this.isCombine) {
+					return {
+						width: '80rpx'
+					}
+				}
+			},
+			getReferencePrice(item) {
+				if (!item || !this.getSchema(item)) {
+					this.getSchema(item).reference_price = '0.00';
+					return '0.00';
+				}
+				// 无上架商品的，以buff的转换价格为准。
+				// 有上架商品的，如果buff转换价格比我们商城低，则以buff为准，如果是我们商城更低，以我们的价格为准。
+				if (this.getSchema(item)) {
+					let schema = this.getSchema(item);
+					if (schema.sell_min && schema.sell_min > 0) {
+						if (schema.buff_min_price && schema.buff_min_price > 0) {
+							let price = schema.buff_min_price < schema.sell_min ? schema.buff_min_price : schema.sell_min;
+							this.getSchema(item).reference_price = price > 0.02 ? price : 0.02;
+						} else {
+							this.getSchema(item).reference_price = schema.sell_min > 0.02 ? schema.sell_min : 0.02;
+						}
+						return this.getSchema(item).reference_price;
+					} else {
+						let price = schema.buff_min_price ? schema.buff_min_price : '0.00';
+						this.getSchema(item).reference_price = price;
+						return price;
+					}
+				}
+			},
+			changeListHeight(index) {
+				let flag = index + 1 >= Math.floor(this.showList.length / 3 * 2) ? true : false;
+				if (flag) {
+					this.height = this.keyboardHeight - 180;
+					return;
+				} else {
+					this.height += this.keyboardHeight - 30;
+					return;
+				}
+			},
+			checkInputPrice(e, item) {
+				let decimal = e.detail.value.split(".");
+				if (!decimal) return;
+				if (decimal[1] && decimal[1].length > 2) {
+					this.$nextTick(() => {
+						item.amount = Math.floor(e.detail.value * 100) / 100;
+						return;
+					});
+				}
+			},
+			calibrationPrice(e, item) {
+				this.height = 90;
+				if (e.detail.value.includes(".")) {
+					let decimal = e.detail.value.split(".");
+					this.$nextTick(() => {
+						if (decimal[1].length > 0) {
+							item.amount = e.detail.value;
+						} else {
+							item.amount = decimal[0];
+						}
+						return;
+					});
+				}
+			},
+			/**
+			 * 上架提交
+			 */
+			/**
+			 * 上架提交
+			 */
+			async upSubmit() {
+			    try {
+			        // 1. 先校验 Steam 长期会话
+			        const steamStatus = await steamOnlineStateApi();
+			        if (!steamStatus.datas) {
+			            uni.showModal({
+			                content: i18n.t('app.steam.session.expired'),
+			                confirmText: this.i18n.t('app.common.confirm'),
+			                cancelText: this.i18n.t('app.common.cancel'),
+			                success: (res) => {
+			                    if (res.confirm) {
+			                        uni.$u.route('/pages/user/steam/steam-simulate-login');
+			                    }
+			                }
+			            });
+			            return;
+			        }
+			
+			        uni.showLoading({
+			            title: i18n.t('app.system.tips.please_wait'),
+			            mask: true
+			        });
+			
+			        const res = await OrderItemUpApi({
+			            appId: this.list[0].app_id,
+			            items: this.getItems()
+			        });
+			
+			
+			        // 先把 code 转成数字，避免字符串坑
+			        const code = Number(res.code);
+			        const msg = res.datas === true 
+			                    ? this.i18n.t('app.system.message.success')   // ← 用多语言
+			                    : String(res.datas || this.i18n.t('app.system.message.operation_failed'));
+			
+			        // 先把 loading 关掉，再给用户反馈
+			        uni.hideLoading();
+			
+			        // ---------------- 分支处理 ----------------
+			        if (code === 0) {
+			            // 首次上架成功
+			            uni.showToast({
+			                title: msg,
+			                icon: 'success',
+			                duration: 1200,
+			                success: () => {
+			                    setTimeout(() => {
+			                        this.backOrRedirect();   // 统一后退
+			                    }, 1200);
+			                }
+			            });
+			            uni.$emit('order-inventroy-reload');
+			            return;
+			        }
+			
+			        if (code === -1) {
+			            // 重复上架
+			            uni.showToast({ title: msg, icon: 'none' });
+			            // 如果也想返回上一页，打开下面一行
+			            // this.backOrRedirect();
+			            return;
+			        }
+			
+			        // 其他异常
+			        uni.showToast({ title: msg, icon: 'none' });
+			
+			    } catch (error) {
+			        uni.hideLoading();
+			        uni.showToast({
+			            title: error.message || '网络异常',
+			            icon: 'none'
+			        });
+			    }
+			},
+			
+			/* 统一返回 / 重定向 */
+			backOrRedirect() {
+			    const pages = getCurrentPages();
+			    if (pages.length > 1) {
+			        uni.navigateBack({ delta: 1 });
+			    } else {
+			        uni.redirectTo({
+			            url: '/pages/shop/sale-manage/inventory-manage'
+			        });
+			    }
+			},
+			getItems() {
+				let items = [];
+				if (this.isCombine) {
+					this.showList.forEach(item => {
+						item.items.forEach(i => {
+							items.push({
+								id: i.id,
+								price: item.amount,
+							})
+						})
+					})
+				} else {
+					this.showList.forEach(item => {
+						items.push({
+							id: item.id,
+							price: item.amount,
+							// note: ''
+						})
+					})
+				}
+				return items;
+			},
+			/**
+			 * 上架确认
+			 */
+			openConfim() {
+				if (this.checkPrice()) {
+					uni.showToast({
+						title: this.i18n.t('app.inventory.upshop.price_empty_tip'),
+						icon: 'none',
+					});
+					return
+				}
+				if (!this.canSubmit) {
+					uni.showToast({
+						title: this.i18n.t('app.inventory.upshop.price_zero_tip'),
+						icon: 'none',
+						duration: 2000
+					});
+					return;
+				}
+				this.checkPricelimit();
+				this.show = true;
+			},
+			/**
+			 * 添加价格是否在合理标识
+			 * priceWarning
+			 */
+			checkPricelimit() {
+				this.showList.forEach(item => {
+					let sell_min = this.getSchema(item).sell_min;
+					let price = Number(item.amount);
+					let sell = this.getSchema(item).sell_min * 0.90;
+					if (sell_min > 10 && price < sell) {
+						item.priceWarning = true
+					} else {
+						item.priceWarning = false
+					}
+				})
+			},
+			/**
+			 * 检查价格是否填写
+			 */
+			checkPrice() {
+				return this.showList.some(item => !item.amount);
+			},
+			/**
+			 * 一件定价
+			 */
+			onePricing() {
+				this.showList.forEach(item => {
+					let referencePirce = Number(this.getSchema(item).reference_price) ? this.getSchema(item)
+						.reference_price : 0;
+					if (!referencePirce) return;
+					if (referencePirce > 1000) {
+						referencePirce -= 0.5;
+					} else if (referencePirce > 100) {
+						referencePirce -= 0.1;
+					} else if (referencePirce > 0.02) {
+						referencePirce -= 0.01;
+					} else {
+						referencePirce = 0.02;
+					}
+					item.amount = Number(referencePirce.toFixed(2));
+				})
+				this.$forceUpdate();
+			},
+			/**
+			 * 合并
+			 */
+			combineList() {
+				if (!this.isAllowCombine) return;
+				this.isCombine = !this.isCombine;
+				if (this.isCombine) {
+					this.enhancedData.forEach(datas => {
+						let sameArr = this.list.filter(item => item.schema_id == datas.schema_id);
+						const sortedDesc = sameArr.sort((a, b) => Number(b.amount) - Number(a.amount));
+						const highestItem = sortedDesc[0];
+						datas.amount = highestItem && Number(highestItem.amount) > 0 ? Number(highestItem.amount) :
+							"";
+						sameArr.forEach(item => item.amount = datas.amount);
+					});
+				}
+				this.showList = this.isCombine ? this.enhancedData : this.list;
+			},
+			/**
+			 * 定价
+			 */
+			goPricing(item) {
+				item.amount = this.schemas[item.schema_id].reference_price;
+				this.$forceUpdate();
+			},
+			/**
+			 * 同个饰品合并
+			 */
+			mergeItems(items) {
+				return Object.values(
+					items.reduce((acc, item) => {
+						const key = item.schema_id;
+						// 首次出现的 schema_id 初始化数组
+						if (!acc[key]) {
+							acc[key] = {
+								schema_id: key,
+								items: [],
+								// 可添加聚合数据
+								count: 0,
+								amount: item.amount ? item.amount : ""
+							};
+						}
+						// 添加物品到分组
+						acc[key].items.push(item);
+
+						// 计算聚合数据
+						acc[key].count++;
+						return acc;
+					}, {})
+				);
+			},
+			async getShopParams() {
+				const res = await GetSysParamsApi();
+				if (res.code == 0) {
+					this.es_min_price = res.datas.minPrice;
+					this.es_min_fee = res.datas.minFeeAmount;
+					this.feeRate = res.datas.fee;
+				}
+			},
+			/**
+			 * 总价
+			 */
+			getTotalPrice() {
+				let price = 0;
+				this.showList.forEach(item => {
+					price += !this.isCombine ? Number(item.amount) : Number(item.amount) * item.count;
+				})
+				return Math.floor(Number(price) * 100) / 100;
+			},
+			/**
+			 * 实际总收入 = 总价 - 手续费
+			 */
+			getTotalIncome() {
+				const totalPrice = this.getTotalPrice();
+    			const totalFee = this.getTotalFee();
+				const income = (totalPrice * 100 - totalFee * 100) / 100;
+				return Math.floor(Number(income) * 100) / 100;
+			},
+			/**
+			 * 总积分
+			 */
+			getTotalPoints() {
+				let points = 0;
+				this.showList.forEach(item => {
+					points += !this.isCombine ? Number(item.amount) : Number(item.amount) * item.count;
+				})
+				return Math.floor(points);
+			},
+			/**
+			 * 总手续费
+			 * 手续费规则：只有在售价为0.01时，手续费可以为0，最低价格为0.02
+			 * 最低售价只能是0.02
+			 * 手续费最低0.01，不出现0的情况了
+			 */
+			getTotalFee() {
+				let fee = this.getTotalPrice() * this.feeRate;
+				if (fee < this.es_min_fee) {
+					fee = this.es_min_fee;
+				} else {
+					fee = fee.toFixed(2);
+				}
+				return fee;
+			},
+			/**
+			 * 总数量
+			 */
+			getTotalNum() {
+				let num = 0;
+				this.showList.forEach(item => {
+					if (!this.isCombine) {
+						num++;
+					} else {
+						num += item.count;
+					}
+				});
+				return num;
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.up-shop-conter {
+		flex: 1;
+		width: 750rpx;
+		background-color: $app-surface;
+		padding: 20rpx;
+	}
+
+	.up-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		position: relative;
+		padding: 20rpx;
+		background-color: $app-background;
+		border-radius: 5rpx;
+		border-bottom: 20rpx solid $app-surface;
+	}
+
+	.item-header {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+
+		.item-header-title {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0 10rpx;
+
+			.left {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: flex-start;
+
+				.appraise {
+					display: flex;
+					flex-direction: row;
+				}
+			}
+
+			.market-name {
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				text-align: left;
+				margin-bottom: 16rpx;
+				lines: 1;
+				text-overflow: ellipsis;
+			}
+
+			.market-info {
+				height: 70rpx;
+				display: flex;
+				align-items: center;
+				justify-content: flex-start;
+				padding-right: 10rpx;
+				position: relative;
+			}
+
+			.view-market {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+			}
+
+			.item-nums {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				position: absolute;
+				right: 20rpx;
+				bottom: 0;
+			}
+
+
+			.label {
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				padding-top: 2rpx;
+			}
+
+			.value {
+				font-size: $font-size-md;
+				color: $app-danger;
+				margin-left: 10rpx;
+				font-weight: bold;
+			}
+		}
+	}
+
+	.item-wear {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+
+		.paint-wear {
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-start;
+			padding: 20rpx 0;
+
+			.label {
+				color: $app-text-thirdly;
+				font-size: $font-size-md;
+				margin-bottom: 10rpx;
+			}
+		}
+
+		.item-sticker-list {
+			padding-right: 30rpx;
+		}
+	}
+
+	.item-price {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		padding-top: 20rpx;
+
+		.sell-price {
+			width: 120rpx;
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			text-align: left;
+		}
+
+		.sell-value {
+			width: 535rpx;
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			padding: 0 12rpx;
+			margin-left: 10rpx;
+			background-color: $app-surface-elevated;
+		}
+
+		.up-pricing {
+			width: 185rpx;
+			height: 52rpx;
+			font-size: $font-size-md;
+			color: $app-background;
+			padding-left: 3rpx;
+			z-index: 1;
+			border: 1rpx solid $app-link;
+		}
+	}
+
+	.up-shop-footer {
+		width: 750rpx;
+		height: 80rpx;
+		position: fixed;
+		bottom: 0rpx;
+		left: 0;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		background-color: $app-background;
+		border-top: 1rpx solid $app-surface;
+
+		.left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+			padding-left: 20rpx;
+
+			.text {
+				font-size: $font-size-md;
+				color: $app-text-primary;
+			}
+
+			.value {
+				font-size: $font-size-md;
+				color: $app-danger;
+				margin-left: 10rpx;
+			}
+		}
+
+		.right {
+			width: 400rpx;
+			display: flex;
+			flex-direction: row;
+			justify-content: flex-end;
+			align-items: center;
+		}
+
+		.up-submit {
+			font-size: $font-size-md;
+			width: 200rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			background-color: $app-link;
+			border: 1rpx solid $app-link;
+			color: $app-background;
+			border-radius: 0;
+		}
+
+		.check-box {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+			margin-right: 20rpx;
+
+			.icons {
+				width: 20rpx;
+				height: 20rpx;
+				border: 2rpx solid $app-text-secondary;
+			}
+
+			.forbid-icons {
+				width: 20rpx;
+				height: 20rpx;
+				border: 2rpx solid $app-text-thirdly;
+			}
+
+			.label {
+				font-size: $font-size-sm;
+				margin-left: 10rpx;
+			}
+
+			.forbid-label {
+				font-size: $font-size-sm;
+				margin-left: 10rpx;
+				color: $app-text-thirdly;
+			}
+		}
+	}
+
+	.popup-title {
+		width: 750rpx;
+		height: 50rpx;
+		line-height: 50rpx;
+		font-size: $font-size-md;
+		color: $app-text-primary;
+		text-align: center;
+	}
+
+	.up-price-confirm {
+		width: 750rpx;
+		padding: 20rpx;
+		background-color: $app-background;
+	}
+
+	.up-confirm-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		position: relative;
+		background-color: $app-surface;
+		border-radius: 5rpx;
+		padding: 20rpx;
+		border-bottom: 10rpx solid $app-background;
+
+		.header {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+
+			.title {
+				width: 500rpx;
+				display: flex;
+				flex-direction: row;
+				flex-wrap: wrap;
+				margin-left: 20rpx;
+
+				.market-name {
+					width: 500rpx;
+					font-size: $font-size-md;
+					color: $app-text-primary;
+					lines: 1;
+					text-overflow: ellipsis;
+				}
+			}
+		}
+
+		.price {
+			width: 710rpx;
+			height: 60rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+		justify-content: center;
+			.sell-left {
+				width: 300rpx;
+				font-size: $font-size-sm;
+				color: $app-text-primary;
+				text-align: center;
+			}
+
+			.sell-center {
+				padding-left: 10rpx;
+				width: 300rpx;
+				height: 2rpx;
+				border-bottom: 1rpx dashed $app-text-disabled;
+			}
+
+			.sell-right {
+				width: 300rpx;
+				font-size: $font-size-sm;
+				color: $app-text-primary;
+				text-align: left;
+				padding-left: 10rpx;
+			}
+
+			.red {
+				color: $app-danger !important;
+			}
+		}
+	}
+
+
+	.popup-btn-wrap {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		padding: 10rpx;
+
+		.confirm-btn {
+			width: 325rpx;
+			height: 60rpx;
+			margin: 0 20rpx;
+		}
+
+		.cancel-btn {
+			width: 325rpx;
+			height: 60rpx;
+			margin: 0 20rpx;
+		}
+	}
+
+	.upshop-box {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx;
+	}
+
+	.en-content {
+		width: 560rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin: 10rpx 0;
+
+		.label {
+			width: 300rpx;
+			font-size: $font-size-md;
+			color: $app-text-secondary;
+		}
+	}
+
+	.content {
+		width: 440rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin: 10rpx 0;
+
+		.label {
+			font-size: $font-size-md;
+			color: $app-text-secondary;
+			text-align: left;
+		}
+	}
+
+	.right {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		
+		.text {
+			font-size: $font-size-md;
+		}
+
+		.value {
+			color: $app-link;
+		}
+
+		.income {
+			color: $app-danger;
+		}
+
+		.unit {
+			font-size: $font-size-md;
+			color: $app-danger;
+			margin-left: 6rpx;
+		}
+	}
+	.item-gem-list {
+		padding: 0 5rpx;
+	}
+</style>

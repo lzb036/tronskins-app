@@ -1,0 +1,201 @@
+<!-- 品类收藏 -->
+<template>
+	<view>
+		<sort-price-filter :itemName="itemName" :tags="tags" :appid="appid" @ascPrice="refresh($event,'asc')" 
+			@keywords="refresh($event,'keywords')" @filterType="refresh($event,'type')"></sort-price-filter>
+		<u-skeleton :loading="isLoading" rows="10">
+			<list-refresh :dataList="list" :total="total" height="88" @refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item }">
+					<view class="product-item">
+						<base-item :imageUrl="item.imageUrl" :width="156" :exterior="getExterior(item)"
+							:bg="getRarity(item)" :appid="appid" :schema_id="item.schemaId"></base-item>
+						<view class="product-title" @click="route(item)">
+							<text class="market-name">{{item.marketName}}</text>
+							<view class="product-price">
+								<text class="price-label">{{i18n.t('app.trade.sale.text')}}</text>
+								<text class="price-value">{{currencySymbol + item.sellMinPrice}}</text>
+								<text class="price-label">{{i18n.t('app.trade.purchase.text')}}</text>
+								<text class="price-value">{{currencySymbol + item.buyMaxPrice}}</text>
+							</view>
+						</view>
+					</view>
+				</template>
+			</list-refresh>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config';
+
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import SortPriceFilter from '@/components/layout/SortPriceFilter.nvue';
+
+	import {
+		ProductCollectListApi,
+		CancelCollectApi
+	} from '@/api/modules/shop/shop-product.js';
+
+	export default {
+		components: {
+			ListRefresh,
+			BaseItem,
+			SortPriceFilter
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				appid: getGameType(),
+				list: [],
+				ascPrice: false,
+				marketName: '',
+				tags: '',
+				itemName: '',
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				total: null,
+				isLoading: false,
+			}
+		},
+		created() {
+			this.queryList();
+		},
+		methods: {
+			getExterior(item) {
+				try {
+					return item.tags.exterior
+				} catch (e) {
+
+				}
+			},
+			getRarity(schema) {
+				try {
+					return item.tags.rarity.color
+				} catch (e) {
+
+				}
+			},
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async cancelCollect(e, item) {
+				e.stopPropagation();
+				const res = await CancelCollectApi({
+					schemaId: this.schemaId
+				});
+			},
+			route(item) {
+				uni.$u.route('/pages/product-market/product-template-detail', {
+					schema_id: item.schemaId,
+					appid: getGameType()
+				});
+			},
+			async refresh(e, type) {
+				try {
+					this.isLoading = true;
+					if (type == 'asc') {
+						this.ascPrice = e;
+					}
+					if (type == 'keywords') {
+						this.marketName = e;
+					}
+					if (type == 'type') {
+						this.tags = e.tags;
+						this.itemName = e.itemName;
+					}
+					this.list = [];
+					this.pager.page = 1;
+					await this.queryList();
+				} catch (e) {
+
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.queryList();
+			},
+			async queryList() {
+				let params = {
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					asc: this.ascPrice,
+					field: 'price',
+					keywords: this.marketName,
+					tags: this.tags,
+					itemName: this.itemName
+				}
+				const res = await ProductCollectListApi(params);
+				if (this.list.length >= res.datas.pager.total) return;
+				if (res.code == 0) {
+					this.list = this.list.concat(res.datas.list);
+					this.total = res.datas.pager.total;
+				}
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.product-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx 10rpx;
+		border-bottom: 1rpx solid $app-surface;
+	}
+
+	.product-title {
+		width: 554rpx;
+		display: flex;
+		flex-direction: column;
+		padding-left: 20rpx;
+
+		.market-name {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+
+		.product-price {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			margin-top: 15rpx;
+
+			.price-label {
+				font-size: $font-size-sm;
+				color: $app-text-primary;
+				margin-right: 5rpx;
+			}
+
+			.price-value {
+				font-size: $font-size-sm;
+				color: $app-danger-dark;
+				font-weight: 300;
+				font-weight: bold;
+				margin-right: 10rpx;
+			}
+		}
+	}
+
+	.control {
+		width: 130rpx;
+	}
+</style>

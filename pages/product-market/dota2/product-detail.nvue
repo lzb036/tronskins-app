@@ -1,0 +1,571 @@
+<!-- 饰品详情 -->
+<template>
+	<view class="show-container">
+		<u-loading-page :loading="asset ? false : true" loading-text="loading..."></u-loading-page>
+		<view class="show-header-nav" :style="{paddingTop:getSystemInfo().statusBarHeight + 10 +'px'}">
+			<u-icon name="arrow-left" size="16" color="#fff" @click="routeBack()"></u-icon>
+			<view class="right">
+				<text class="market-text" @click="toItemTemplate()">{{ i18n.t('app.market.detail.right_text') }}</text>
+				<u-icon class="collect-icon" v-if="!asset.favorited&&!asset.isOwn" name="heart" color="#fff" size="24"
+					@click="addProduct()"></u-icon>
+				<u-icon class="collect-icon" v-if="asset.favorited&&!asset.isOwn" name="heart-fill" color="#4773c8" size="24"
+					@click="removeProduct()"></u-icon>
+			</view>
+		</view>
+		
+		
+		<scroll-view :scroll-y="true" class="tags-scroll">
+			<list v-if="asset">
+				<cell>
+					<view class="item-image-wrap">
+						<BaseItem :imageUrl="schemas[asset.schema_id].image_url" :width="750"></BaseItem>
+						<sticker-list v-if="asset.stickers" class="item-sticker" :list="asset.stickers"
+							:schemas="schemas" :width="80"></sticker-list>
+					</view>
+					<view class="item-name-box">
+						<text class="item-market-name"
+							@click="toItemTemplate()">{{ schemas[asset.schema_id].market_name + getSlot() }}</text>
+						<text class="item-rarity"
+							:style="getRarityColor()">{{ schemas[asset.schema_id].tags.rarity.localized_name }}</text>
+					</view>
+					<text class="type-name">{{ schemas[asset.schema_id].tags.type.localized_name }}</text>
+					<!-- 宝石详情 -->
+					<view class="item-property-description" v-if="gemList && gemList.length">
+					  <text class="title">{{ i18n.t('app.market.filter.dota2.gemstones_contains') }}</text>
+					  <view class="gem-item" v-for="(gem, i) in gemList" :key="i">
+					    <image
+					      class="gem-img"
+					      :src="gem.imageUrl"
+					      mode="aspectFit"
+					       />
+					    <view class="gem-info">
+					      <text class="gem-type" :style="{ color: gem.textColor }">{{ gem.gemType }}</text>
+					      <text class="gem-name" :style="{ color: gem.textColor }">{{ gem.statInfo }}</text>
+					    </view>             
+					  </view>
+					</view>
+					<ShopInfo :shopInfo="shop"></ShopInfo>
+					<view class="item-property-description">
+						<text class="title">{{i18n.t('app.market.detail.attribute')}}</text>
+						<view class="item-tags">
+							<text class="label">{{ i18n.t('app.market.dota2.hero_use') + ': ' + hero().localized_name}}</text>
+						</view>
+					</view>
+					
+					<view class="bottom-box" v-if="asset&&!isHideBottom">
+						<text class="price">{{'$' + ' ' + (asset.price?asset.price: '0')}}</text>
+						<view class="right">
+							<u-button v-if="!isOwn&&!isInvalid" class="buy-btn" type="primary" color="#4674c9"
+								@click="showBuyModel()" :text="i18n.t('app.trade.buy.text')">
+							</u-button>
+							<u-button v-if="isOwn" class="buy-btn" type="primary" color="#4674c9" @click="changePrice()"
+								:text="i18n.t('app.inventory.price_change')">
+							</u-button>
+							<u-button v-if="isOwn" class="buy-btn" type="primary" color="#ad4c4c" @click="delist()"
+								:text="i18n.t('app.inventory.delist')">
+							</u-button>
+						</view>
+					</view>
+				</cell>
+			</list>
+		</scroll-view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config'
+	import i18n from '@/utils/locales/i18n';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import StickerList from '@/components/game-item/StickerList.nvue';
+	import ShopInfo from '@/components/shop/shop-detail/shop-info.nvue';
+	import {
+		marketItemApi,
+		marketItem2Api,
+		AddFavoriteApi,
+		RemoveFavoriteApi
+	} from '@/api/modules/market.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		OrderItemPurchaseApi,
+		OrderItemRemovedApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import{GetUserShopInfoApi} from '@/api/modules/shop/shop.js';
+	import {confirmPay } from '@/utils/order/productUtils.js'
+export default {
+		components: {
+			BaseItem,
+			StickerList,
+			WearProgressBar,
+			ShopInfo,
+		},
+		data() {
+			return {
+				i18n,
+				/* 下面 6 个字段直接从路由参数里解析出来 */
+				schemas: [], // Object
+				asset: {}, // Array
+				user: {}, // Object
+				shop: {},
+				show: false,
+				uuid:null,
+			}
+		},
+			async onLoad(options) {
+			this.schemas = JSON.parse(decodeURIComponent(options.schemas));
+			this.asset = JSON.parse(decodeURIComponent(options.asset));
+			this.user = JSON.parse(decodeURIComponent(options.user));
+			this.gemList = this.asset.gemList || [];   // 统一叫 gemList
+			const res = await GetUserShopInfoApi({ uuid: options.uuid });
+			this.shop = res.datas ?? {}; 
+		},
+		methods:{
+			/**
+			 * 购买
+			 * @param {Object} item
+			 */
+			async showBuyModel() {
+			  if (!isLogin()) {
+			    uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+			    return;
+			  }
+			  			  
+			  const payText = this.i18n.t("app.trade.buy.pay_text_2");
+			  const payText2 = this.i18n.t("app.trade.buy.pay_text_3");
+			  const totalAmount = `$ ${this.asset.price}`; 
+			  const floorAmount = Math.floor(this.asset.price);
+			  const content = `${payText} ${floorAmount}\n${payText2} \n`;
+			  const payRes = await confirmPay(totalAmount,content);
+			  if(payRes){
+			    this.buySubmit();
+			  }
+			},
+			async buySubmit() {
+				try {
+					uni.showLoading({
+						title: i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					const res = await OrderItemPurchaseApi({
+						id: this.asset.id,
+						price: this.asset.price,
+						appid: this.asset.app_id,
+					});
+					uni.hideLoading();
+					if (res.datas.includes('Steam issue') || res.datas.includes('Inventory privacy')) {
+						let msg = this.i18n.t('app.inventory.message.privacy') + getAppUserInfo().config.nickname
+						uni.showModal({
+							content: res.datas.includes('Steam issue') ? this.i18n.t(
+								'app.steam.message.trading_restrictions') : msg,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							
+						})
+						return
+					}
+			
+					if (res.code == 0) {
+						uni.$u.toast(i18n.t('app.trade.buy.message.success'));
+						uni.$emit('product-detail-reload');
+						uni.navigateBack();
+						return;
+					}
+				} catch (error) {
+					uni.hideLoading();
+					console.log(error);
+				}
+			},
+			/**
+			 * 改价饰品
+			 */
+			changePrice() {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+				let items = [];
+				this.asset.id = this.itemId;
+				items.push(this.asset);
+				uni.$u.route({
+					url: '/pages/shop/order-manage/change-price',
+					params: {
+						list: encodeURIComponent(JSON.stringify(items)),
+						schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+						mode: 'sell'
+					}
+				})
+			},
+			/**
+			 * 下架
+			 */
+			async delist() {
+				try {
+					if (!isLogin()) {
+						uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+						return;
+					}
+					uni.showModal({
+						title: this.i18n.t('app.system.tips.title'),
+						content: this.i18n.t('app.inventory.message.confirm_delist'),
+						confirmText: this.i18n.t('app.common.confirm'),
+						cancelText: this.i18n.t('app.common.cancel'),
+						success: async (res) => {
+							if (res.confirm) {
+								uni.showLoading({
+									title: this.i18n.t('app.system.tips.please_wait'),
+									mask: true
+								});
+								const ids = [];
+								ids.push(this.itemId)
+								const res = await OrderItemRemovedApi({
+									ids: ids
+								});
+								uni.hideLoading();
+								if (res.code == 0) {
+									uni.navigateBack();
+									uni.$u.toast(this.i18n.t('app.system.message.success')); 
+									uni.$emit('product-detail-reload');
+								} else {
+									uni.$u.toast(res.datas)
+								}
+							}
+						}
+					});
+				} catch (error) {
+					uni.hideLoading();
+					console.log(error)
+					//TODO handle the exception
+				}
+			},
+			async addProduct() {
+				const res = await AddFavoriteApi({
+					itemId: this.asset.id,
+					appId: this.asset.app_id
+				})
+				uni.$u.toast(i18n.t('app.user.collection.message.success'));
+				if (res.code == 0) {
+					uni.$emit('product-detail-reload');
+					this.asset.favorited = true;
+				}
+			},
+			async removeProduct() {
+				const res = await RemoveFavoriteApi(this.asset.id);
+				uni.$u.toast(i18n.t('app.user.collection.uncollect_success'));
+				if (res.code == 0) {
+					this.asset.favorited = false
+					uni.$emit('product-detail-reload');
+				}
+			},
+			itemSet() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.itemSet) {
+					return bean.tags.itemSet;
+				}
+				return '';
+			},
+			rarity() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.rarity) {
+					return bean.tags.rarity;
+				}
+				return '';
+			},
+			hero() {
+				let bean = this.schemas[this.asset.schema_id];
+				if (bean && bean.tags && bean.tags.hero) {
+					return bean.tags.hero;
+				}
+				return '';
+			},
+			getSlot() {
+				if (this.schemas[this.asset.schema_id].tags.slot.name == 'none') {
+					return '';
+				}
+				return ' - ' + this.schemas[this.asset.schema_id].tags.slot.localized_name;
+			},
+			getRarityColor() {
+				return {
+					background: '#' + this.schemas[this.asset.schema_id].tags.rarity.color
+				}
+			},
+			toItemTemplate() {
+				uni.$u.route('/pages/product-market/product-template-detail', {
+					schema_id: this.asset.schema_id,
+					appid: this.asset.app_id
+				});
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync()
+			},
+			routeBack() {
+				uni.navigateBack();
+			},
+		}
+		
+	}
+</script>
+<style lang="scss" scoped>
+		@import "../../../theme.scss";
+		.show-container {
+			display: flex;
+			flex: 1;
+			background-color: $app-background-black;
+		}
+		
+		.tags-scroll {
+			height: 580px;
+			padding-bottom: 100rpx;
+		}
+		
+		.show-header-nav {
+			height: 60px;
+			display: flex;
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+			padding: 20rpx;
+			background-color: rgb(62, 62, 62);
+		
+			.nav-text {
+				width: 500rpx;
+				color: $app-background;
+				lines: 1;
+				text-overflow: ellipsis;
+				font-size: $font-size-md;
+			}
+		
+			.market-text {
+				color: $app-background;
+				font-size: $font-size-lg;
+			}
+		
+			.collect-icon {
+				margin-left: 10rpx;
+			}
+		
+			.right {
+				display: flex;
+				flex-direction: row;
+				justify-content: flex-end;
+				align-items: center;
+			}
+		}
+		
+		.item-image-wrap {
+			position: relative;
+			width: 750rpx;
+			background-color: $app-text-primary;
+		
+			.image {
+				width: 690rpx;
+				height: 414rpx;
+			}
+		
+			.item-sticker {
+				position: absolute;
+				right: 30rpx;
+				bottom: 5rpx;
+			}
+		}
+		
+		.item-sticker-list {
+			width: 750rpx;
+			padding: 20rpx;
+			margin-top: 20rpx;
+			background-color: rgb(44, 44, 46);
+		
+			.sticket-item {
+				width: 710rpx;
+				display: flex;
+				flex-direction: row;
+				margin-bottom: 20rpx;
+				align-items: center;
+		
+				.sticket-image {
+					width: 80rpx;
+					height: 80rpx;
+					background-color: $app-text-primary;
+					padding: 10rpx;
+				}
+			}
+		
+			.text {
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+				padding: 5rpx 10rpx;
+			}
+		}
+		
+		.item-name-box {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+			background-color: rgb(44, 44, 46);
+		}
+		
+		.item-market-name {
+			padding: 20rpx;
+			font-size: $font-size-md;
+			color: $app-surface;
+			font-weight: bold;
+		}
+		
+		.item-rarity {
+			width: 70rpx;
+			font-size: $font-size-sm;
+			padding: 5rpx 0;
+			color: $app-background;
+			text-align: center;
+			font-weight: bold;
+			border-radius: 5rpx;
+		}
+		
+		.item-phase {
+			width: 750rpx;
+			padding: 20rpx;
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			font-weight: bold;
+			background-color: rgb(44, 44, 46);
+			border-bottom: 1rpx solid rgb(53, 53, 56);
+		}
+		
+		.item-paint-seed {
+			width: 750rpx;
+			padding: 20rpx;
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			font-weight: bold;
+			background-color: rgb(44, 44, 46);
+			border-bottom: 1rpx solid rgb(53, 53, 56);
+		}
+		
+		.item-abradability {
+			width: 750rpx;
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			font-weight: bold;
+			padding-bottom: 20rpx;
+		}
+		
+		.abradability-wrap {
+			width: 750rpx;
+			padding: 20rpx;
+			background-color: rgb(44, 44, 46);
+		}
+		
+		.type-name {
+			width: 750rpx;
+			padding: 0rpx 20rpx 20rpx;
+			background-color: rgb(44, 44, 46);
+			font-size: $font-size-sm;
+			color: $app-text-hint;
+		}
+		
+		.item-property-description {
+			width: 750rpx;
+			padding: 20rpx;
+			margin-top: 20rpx;
+			background-color: rgb(44, 44, 46);
+		
+			.title {
+				font-size: $font-size-md;
+				color: $app-text-thirdly;
+			}
+		
+			.item-tags {
+				display: flex;
+				flex-direction: row;
+				padding-top: 20rpx;
+		
+				.label {
+					font-size: $font-size-sm;
+					color: $app-text-thirdly;
+					margin-right: 10rpx;
+				}
+			}
+		}
+		
+		.gem-item {
+			
+			display: flex;
+			flex-direction: row;
+			margin-bottom: 20rpx;
+			align-items: center;
+			
+		
+			.gem-img {
+				width: 100rpx;
+				height: 100rpx;
+				
+			}
+		
+			.gem-info {
+				display: flex;
+				flex-direction: column;
+				padding-left: 20rpx;
+		
+				.gem-type {
+					text-align: left;
+					color: $app-text-disabled;
+					font-size: $font-size-md;
+					line-height: 50rpx;
+				}
+				.gem-name{
+					text-align: left;
+					color: $app-text-disabled;
+					font-size: $font-size-md;
+					line-height: 50rpx;
+				}
+		
+				.stat-info {
+					text-align: left;
+					color: $app-background;
+					font-size: $font-size-md;
+					line-height: 50rpx;
+				}
+			}
+		}
+		
+		.bottom-box {
+			width: 750rpx;
+			height: 100rpx;
+			position: fixed;
+			bottom: 0;
+			left: 0;
+			background: $app-background;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding: 20rpx 20rpx;
+		
+			.price {
+				font-size: $font-size-md;
+				color: $app-danger-dark;
+				font-weight: 300;
+				margin-right: 10rpx;
+				font-weight: bold;
+			}
+		
+			.right {
+				display: flex;
+				flex-direction: row;
+				align-items: flex-end;
+				justify-content: center;
+			}
+		
+			.buy-btn {
+				height: 60rpx;
+				margin-left: 10rpx;
+			}
+		}
+	
+</style>

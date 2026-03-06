@@ -1,0 +1,210 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.steam.login.title')" leftIconColor="#fff" :titleStyle="{color:'#fff'}"
+			bgColor="#171a21" :autoBack="true"></u-navbar>
+		
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js'
+	import {
+		steamTokenFreshApi
+	} from '@/api/modules/steam.js'
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				getUserSteamWeb: null,
+			}
+		},
+		onBackPress(options) {
+			if (this.getUserSteamWeb && options.from == 'navigateBack') {
+				this.close();
+			}
+		},
+		mounted() {
+			this.createWeb();
+		},
+		methods: {
+			createWeb() {
+				const page = this.$scope.$getAppWebview();
+				this.getUserSteamWeb = plus.webview.create("", "WKWebview", {
+					plusrequire: "none",
+					kernel: 'WKWebview',
+					'uni-app': 'none',
+					top: this.getSystemInfo().statusBarHeight + 44 + "px",
+					height: this.getSystemInfo().windowHeight + "px",
+					progress: {
+						color: '#74bcff'
+					}
+				})
+				
+				this.getUserSteamWeb.loadURL('https://steamcommunity.com/login/home/?l=english');
+				let i = 0;
+				this.getUserSteamWeb.addEventListener('loaded', (e) => {
+					this.getUserSteamWeb.evalJS(`
+							window.onload = function(){
+								// 存储所有定时器ID
+								const timers = new Map(); // 使用Map避免ID重复问题
+								
+								// 保存原始方法
+								const originalSetTimeout = window.setTimeout;
+								const originalSetInterval = window.setInterval;
+								
+								// 重写setTimeout
+								window.setTimeout = function(callback, delay, ...args) {
+								  const timerId = originalSetTimeout.call(this, callback, delay, ...args);
+								  timers.set(timerId, { type: 'timeout', id: timerId });
+								  return timerId;
+								};
+								
+								// 重写setInterval
+								window.setInterval = function(callback, delay, ...args) {
+								  const timerId = originalSetInterval.call(this, callback, delay, ...args);
+								  timers.set(timerId, { type: 'interval', id: timerId });
+								  return timerId;
+								};
+								
+								// 获取所有定时器
+								function getAllTimers() {
+								  return Array.from(timers.values());
+								}
+								
+								// 清除所有定时器
+								function clearAllTimers() {
+								  getAllTimers().forEach(({ id, type }) => {
+								    type === 'timeout' ? clearTimeout(id) : null;
+								    timers.delete(id);
+								  });
+								}
+								var login_dom = null;
+								var login_timer = null;
+								login_timer = setInterval(() => {
+									login_dom = document.getElementsByClassName('DjSvCZoKKfoNSmarsEcTS');
+									if (login_dom && login_dom[0]&&login_dom[0].innerHTML&&login_dom[0].innerHTML == 'Sign in') {
+										clearInterval(login_timer);
+										login_timer = null;
+										var form_dom = document.getElementsByClassName('_2GBWeup5cttgbTw8FM3tfx');
+										var form_acccount = form_dom[0].value ? form_dom[0].value : '';
+										var form_password = form_dom[1].value ? form_dom[1].value : '';
+										form_dom[0].addEventListener('input', (e) => {
+											form_acccount = e.target.value;
+										})
+										
+										form_dom[1].addEventListener('input', (e) => {
+											form_password = e.target.value;
+										})
+										
+										login_dom[0].addEventListener('click', () => {
+											var confirm_dom = null;
+											var confirm_timer = null;
+											var code_dom = null;
+											var code_timer = null;
+											var auth_timer = null;
+											// steam confirm login
+											confirm_timer = setInterval(() => {
+												confirm_dom = document.getElementsByClassName('_2FyQDUS2uHbW1fzoFK2jLx');
+												if (confirm_dom && confirm_dom[0]&& confirm_dom[0].innerHTML &&confirm_dom[0].innerHTML == 'Enter a code instead') {
+													clearInterval(confirm_timer)
+													confirm_timer = null;
+													
+													$J.ajax({
+														type: 'GET',
+														url: 'https://api.steampowered.com/IAuthenticationService/GetPasswordRSAPublicKey/v1/?account_name=' +
+															form_acccount,
+													}).done(function(response) {
+														var RSAdata = response.response;
+														var pubKey = RSA.getPublicKey(RSAdata.publickey_mod, RSAdata
+															.publickey_exp);
+														var encryptedPassword = RSA.encrypt(form_password, pubKey);
+														$J.ajax({
+															type: 'POST',
+															url: 'https://api.steampowered.com/IAuthenticationService/BeginAuthSessionViaCredentials/v1/',
+															data: {
+																"persistence": 1,
+																"encrypted_password": encryptedPassword,
+																"account_name": form_acccount,
+																"encryption_timestamp": RSAdata.timestamp
+															}
+														}).done(function(beginAuth) {
+															var beginAuthData = beginAuth.response;
+															auth_timer = setInterval(() => {
+																$J.ajax({
+																	type: 'POST',
+																	url: 'https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v1/',
+																	header: {
+																		"Content-Type": 'application/x-www-form-urlencoded; charset=UTF-8',
+																		"Referer": 'https://steamcommunity.com',
+																	},
+																	data: {
+																		"client_id": beginAuthData
+																			.client_id,
+																		"request_id": beginAuthData
+																			.request_id,
+																	}
+																}).done(function(pollAuth) {
+																	var pollAuthData = pollAuth
+																		.response;
+																	if (pollAuthData
+																		.had_remote_interaction &&
+																		pollAuthData
+																		.refresh_token) {
+																		clearInterval(auth_timer)
+																		auth_timer = null;
+																		document.title = pollAuthData.refresh_token;
+																	}
+																});
+															}, 3000);
+														});
+													});
+												}
+											})
+										})
+									}
+								}, 2000);
+							}();							
+						`);
+					var title_timer = null;
+					title_timer = setInterval(async () => {
+						if (this.getUserSteamWeb.getTitle().startsWith(
+								'eyAidHlwIjogIkpXVCIsICJhbGciOiAiRWREU0EiIH0')) {
+							clearInterval(title_timer)
+							title_timer = null;
+
+							let steamReq = {
+								steamId: getAppUserInfo().config.steamId,
+								freshToken: this.getUserSteamWeb.getTitle(),
+							}
+							const qres = await steamTokenFreshApi(steamReq);
+							if (qres.code == 0) {
+								this.close();
+								uni.$u.toast('Success');
+								setTimeout(() => {
+									uni.navigateBack();
+								}, 200)
+							}
+						}
+					}, 2000)
+
+				}, false);
+				page.append(this.getUserSteamWeb);
+				this.getUserSteamWeb.show();
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			close() {
+				this.getUserSteamWeb.addEventListener('loaded', (e) => {
+					this.getUserSteamWeb.evalJS('javascript:Logout();');
+				});
+				this.getUserSteamWeb.close();
+				this.getUserSteamWeb = null; // 清理引用，防止内存泄漏
+			},
+		}
+	}
+</script>

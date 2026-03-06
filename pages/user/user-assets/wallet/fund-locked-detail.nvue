@@ -1,0 +1,398 @@
+<template>
+	<scroll-view class="order-container" :scroll-y="true">
+		<u-navbar :title="i18n.t('app.trade.order.details')" :autoBack="true" placeholder right-icon="kefu-ermai"
+			@rightClick="routerHelp()"></u-navbar>
+			<view class="order-info">
+				<view class="order-info-item">
+				<text class="label">{{i18n.t('app.trade.order.number')}}:</text>
+				<text class="value">{{item.id}}</text>
+				<text class="btn" @click="copyBtn()">{{i18n.t('app.common.copy')}}</text>
+			</view>
+		</view>
+		<view class="order-info">
+			<view class="order-info-item">
+				<text class="label">{{i18n.t('app.trade.order.total_price')}}:</text>
+				<text class="price">{{currencySymbol + ' ' + item.price}}</text>
+			</view>
+			
+		</view>
+		<view class="product-item">
+		  <view @click="goDetail(item)">
+		    <PhaseItem
+		      :item="item"
+		      :schema="currentSchema"
+		      :width="180"
+		    />
+		  </view>
+		
+		  <view class="price-wrap">
+		    <text class="market-name">{{ currentSchema.market_name }}</text>
+			<text class="market-price">{{i18n.t('app.market.detail.sale_lowest')+ currencySymbol + ' ' + currentSchema.sell_min }}</text>
+			<text class="market-price">{{i18n.t('app.market.detail.purchase_highest')+currencySymbol + ' ' + currentSchema.buy_max }}</text>
+		  </view>
+		  <text class="item-paint-wear" v-if="currentSchema.paint_wear">
+		    {{ i18n.t('app.market.csgo.abradability') }}:{{ currentSchema.paint_wear }}
+		  </text>
+		  <wear-progress-bar v-if="currentSchema.paint_wear" :paintWear="currentSchema.paint_wear" :width="350" />
+		  <sticker-list
+		    class="item-sticker-list"
+		    v-if="currentSchema.stickers && currentSchema.stickers.length > 0"
+		    :list="currentSchema.stickers"
+		    :schemas="stickers"
+		    :width="60"
+		  />
+		</view>
+		<text class="tips-title">{{i18n.t('app.system.tips.warm')}}</text>
+		<text class="tips">1.{{i18n.t('app.trade.order.buyer_tips_1')}}</text>
+		<text class="tips">2.{{i18n.t('app.trade.order.buyer_tips_2')}}</text>
+		<text class="tips">3.{{i18n.t('app.trade.order.buyer_tips_3')}}</text>
+		<text class="tips">4.{{i18n.t('app.trade.order.buyer_tips_4')}}</text>
+		<!-- <text class="tips">{{i18n.t('app.trade.order.seller_tips_1')}}</text> -->
+		<!-- <text class="tips">1.{{i18n.t('app.trade.order.seller_tips_2')}}</text>
+		<text class="tips">2.{{i18n.t('app.trade.order.seller_tips_3')}}</text> -->
+		<view class="footer" v-if="[2,3,4].includes(item.status)">
+			<u-button v-if="item.seller==getUserInfo().id && item.status==2" class="deliver-btn" type="primary"
+				color="#4674c9" :text="i18n.t('app.market.product.deliver')" @click="show = true"></u-button>
+			<u-button v-if="item.buyer==getUserInfo().id && item.status==4" class="deliver-btn" type="primary"
+				color="#4674c9" :text="i18n.t('app.market.product.receive')" @click="showReceive=true"></u-button>
+			<u-button v-if="item.buyer==getUserInfo().id && item.status==2" class="deliver-btn" type="primary"
+				color="#4674c9" :text="i18n.t('app.trade.order.cancel')" @click="cancelOrder()"></u-button>
+				
+		</view>
+		<u-popup :show="show" mode="right" @close="show = false">
+			<deliver-drawer :buyer="item ? item.buyer  : ''" @success="success()"
+				@close="show = false"></deliver-drawer>
+		</u-popup>
+		<u-popup :show="showReceive" mode="center" @close="showReceive = false">
+			<view class="receive-content">
+				<text class="title">{{ i18n.t('app.system.tips.title') }}</text>
+				<text class="text">{{ i18n.t('app.trade.receipt.message.confirm_auto') }}</text>
+				<u-button class="confirm-btn" type="primary" color="#4674c9" @click="receiveGoods()"
+					:text="i18n.t('app.common.confirm')">
+				</u-button>
+			</view>
+		</u-popup>
+	</scroll-view>
+</template>
+
+<script>
+	import config from '@/config/index.js';
+	import i18n from '@/utils/locales/i18n';
+	import PhaseItem from '@/components/game-item/PhaseItem.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import StickerList from '@/components/game-item/StickerList.nvue';
+	import DeliverDrawer from '@/components/shop/order-manage/DeliverDrawer.nvue';
+	import {
+		getAppUserInfo
+	} from '@/utils/storage/modules/user';
+	import {
+		CancelOrderApi,
+		OrderTradeofferReceiptApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		steamOnlineStateApi,
+	} from '@/api/modules/steam.js';
+
+	export default {
+		components: {
+			PhaseItem,
+			WearProgressBar,
+			StickerList,
+			DeliverDrawer
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				item: [],
+				schemas: {},
+				users: {},
+				stickers: {},
+				show: false,
+				showReceive: false
+			}
+		},
+		onLoad(options) {
+			this.item = JSON.parse(decodeURIComponent(options.item));
+			this.schemas = JSON.parse(decodeURIComponent(options.schemas));
+			this.users = JSON.parse(decodeURIComponent(options.users));
+			if (options.stickers) {
+				this.stickers = JSON.parse(decodeURIComponent(options.stickers));
+			}
+			
+		},
+		computed: {
+		  currentSchema() {
+		    // 通过 schemaId 反查 market_hash_name
+		    const hashName = Object.keys(this.schemas)
+		      .find(k => this.schemas[k].id === this.item.schemaId);
+		    return this.schemas[hashName] || {};
+		  }
+		},
+		methods: {
+			goDetail(item) {
+				uni.$u.route('/pages/product-market/product-template-detail', {
+					schema_id: item.schemaId,
+					appid: item.appId
+				});
+			},
+			async receiveGoods() {
+				try {
+					const steamStatus = await steamOnlineStateApi();
+					if (!steamStatus.datas) {
+						uni.$u.route('/pages/shop/order-manage/receive-goods', {
+							trade_offer_id: this.item.trade_offer_id
+						});
+						return;
+					}
+					uni.showLoading({
+						title: this.i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					const res = await OrderTradeofferReceiptApi({
+						id: this.item.id
+					});
+					uni.hideLoading();
+					uni.$u.toast(res.datas);
+					this.showReceive = false;
+					if (res.code == 0) {
+						uni.$emit('receive-goods');
+						setTimeout(() => {
+							uni.navigateBack();
+						}, 1000)
+					}
+				} catch (e) {
+					uni.$u.toast(e.message);
+				}
+			},
+			success() {
+				uni.$emit('order-deliver-success');
+				uni.navigateBack();
+			},
+			cancelOrder() {
+				const currentTimestamp = Math.floor(Date.now() / 1000);
+				uni.showModal({
+					title: this.i18n.t('app.trade.order.cancel'),
+					content: Math.abs(currentTimestamp - this.item.change_time) <= 1800 ? this.i18n.t('app.trade.order.message.cancel_time_less') :this.i18n.t('app.trade.order.message.confirm_cancel'),
+					confirmText: this.i18n.t('app.common.confirm'),
+					cancelText: this.i18n.t('app.common.cancel'),
+					success: async (res) => {
+						if (res.confirm) {
+							const resp = await CancelOrderApi({
+								id: this.item.id
+							});
+							if (resp.code == 0) {
+								uni.$u.toast(this.i18n.t('app.system.message.success'));
+								uni.$emit('receive-goods');
+								return;
+							}
+							uni.$u.toast(resp.datas);
+						}
+					}
+				});
+			},
+			routerHelp() {
+				uni.$u.route('/pages/help-center/feedback');
+			},
+			copyBtn() {
+				uni.setClipboardData({
+					data: this.item.id,
+					success: () => {
+						uni.showToast({
+							title: this.i18n.t('app.system.message.copy_success'),
+							icon: 'none',
+							duration: 1000
+						})
+					}
+				});
+			},
+			getSellerUser() {
+				if (this.users) {
+					return this.users[this.item.seller]
+				}
+			},
+			getBuyerUser() {
+				if (this.users) {
+					return this.users[this.item.buyer]
+				}
+			},
+			getUserInfo() {
+				return getAppUserInfo();
+			},
+			createTime(item) {
+				return uni.$u.timeFormat(item.create_time, 'yyyy-mm-dd hh:MM');
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../../theme.scss";
+	.order-container {
+		width: 750rpx;
+		flex: 1;
+		background-color: $app-surface;
+
+		.order-title {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			background-color: $app-background;
+			padding: 20rpx;
+			justify-content: space-between;
+			margin-bottom: 20rpx;
+
+			.status-name {
+				color: $app-text-primary;
+				font-size: $font-size-sm;
+			}
+
+			.type-name {
+				color: $app-text-primary;
+				font-size: $font-size-sm
+			}
+
+			.status-suceess {
+				color: green;
+			}
+
+			.red {
+				color: $app-danger-dark;
+			}
+		}
+
+		.order-info {
+			width: 750rpx;
+			background-color: $app-background;
+			padding: 10rpx 20rpx;
+			margin-bottom: 20rpx;
+
+			.order-info-item {
+				display: flex;
+				flex-direction: row;
+				padding: 10rpx 0;
+
+				.btn {
+					font-size: $font-size-sm;
+					color: $app-icon-active;
+					margin-left: 10rpx;
+				}
+
+				.label {
+					width: 120rpx;
+					font-size: $font-size-sm;
+					color: $app-text-thirdly;
+				}
+
+				.value {
+					font-size: $font-size-sm;
+					color: $app-text-primary;
+				}
+				
+				.price{
+					font-size: $font-size-sm;
+					color: $app-text-price;
+					font-weight: bold;
+				}
+			}
+		}
+
+		.product-item {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+			padding: 20rpx;
+			align-items: center;
+			background-color: $app-background;
+			border-bottom: 1rpx solid $app-surface;
+			position: relative;
+
+			.price-wrap {
+				width: 500rpx;
+				padding-left: 20rpx;
+
+				.market-name {
+					font-size: $font-size-md;
+					color: $app-text-primary;
+					lines: 1;
+					text-overflow: ellipsis;
+				}
+
+				.market-price {
+					 font-size: $font-size-sm;
+					color: $app-text-secondary;
+					padding-top: 10rpx;
+				}
+			}
+
+			.item-paint-wear {
+				width: 710rpx;
+				font-size: $font-size-xs;
+				color: $app-text-thirdly;
+				lines: 1;
+				text-overflow: ellipsis;
+				padding: 10rpx 0;
+			}
+
+			.item-sticker-list {
+				width: 710rpx;
+				padding: 10rpx 0;
+			}
+		}
+
+		.tips-title {
+			width: 750rpx;
+			padding: 10rpx;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+		}
+
+		.tips {
+			width: 750rpx;
+			padding: 10rpx;
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.footer {
+		width: 750rpx;
+		height: 60px;
+		position: fixed;
+		bottom: 0px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.deliver-btn {
+		width: 160rpx;
+	}
+	
+	.receive-content{
+		width: 520rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 30rpx;
+		
+		.title{
+			color: $app-text-primary;
+			font-size: $font-size-lg;
+			font-weight: bold;
+		}
+			
+		.text{
+			color: $app-text-thirdly;
+			font-size: $font-size-md;
+			margin: 30rpx 0;
+		}
+		
+		.confirm-btn{
+			width: 340rpx;
+			height: 60rpx;
+		}
+	}
+</style>

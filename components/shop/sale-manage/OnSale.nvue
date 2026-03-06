@@ -1,0 +1,405 @@
+<!-- 出售中 -->
+<template>
+	<view>
+		<view class="header">
+			<sort-price-filter :itemName="itemName" :tags="tags" :appid="appid" @ascPrice="refresh($event,'asc')"
+				@keywords="refresh($event,'keywords')" @filterType="refresh($event,'type')"></sort-price-filter>
+			<view class="valuation-box">
+				<text class="value">{{ i18n.t('app.inventory.count') +': ' + total }}</text>
+				<text class="value">{{ i18n.t('app.inventory.total_value') +': '+ currencySymbol + formattedTotalPrice }}</text>
+			</view>
+		</view>
+		<u-skeleton :loading="isLoading" rows="10">
+			<waterfall-refresh :dataList="list" :total="total" height="44" style="padding-bottom: 80px;"
+				@refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item }">
+					<item-sell :item="item" :schemas="schemas" width="355"></item-sell>
+				</template>
+			</waterfall-refresh>
+		</u-skeleton>
+		<view class="select-content" v-if="isShow && currentTab == 0">
+			<view class="select-left" @click="itemAll()">
+				<image class="select-all" :src="`/static/image/game/${ isAll ? 'all-active' : 'all' }.png`" mode="">
+				</image>
+				<text class="select-value">{{`(${selectList.length}/${list.length})` }}</text>
+			</view>
+			<view class="select-right">
+				<text class="change-price-btn" @click="changePriceSubmit()">{{i18n.t('app.inventory.price_change')}}</text>
+				<text class="up-shop-btn" @click="delistSubmit()">{{i18n.t('app.inventory.delist')}}</text>
+			</view>
+		</view>
+		<view v-if="!isLoading && list.length === 0 && !isRefreshing" class="empty-tip">
+			{{ i18n.t('app.inventory.no_items') }}
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import ItemSell from '@/components/game-item/ItemSell.nvue';
+	import MarketNavbar from '@/components/layout/MarketNavbar.nvue';
+	import SortPriceFilter from '@/components/layout/SortPriceFilter.nvue';
+	import WaterfallRefresh from '@/components/layout/waterfall-refresh.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		ShopOnSaleListApi,
+		OrderItemRemovedApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		getItemListData
+	} from '@/utils/dq/goods.js';
+
+	export default {
+		props: ['currentTab'],
+		components: {
+			ItemSell,
+			MarketNavbar,
+			SortPriceFilter,
+			WaterfallRefresh
+		},
+		watch: {
+			currentTab(newVal) {
+				if (newVal !== 0) {
+					this.list.forEach(item => item.isSelect = false);
+					this.isAll = false;
+				}
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				appid: getGameType(),
+				currencySymbol: config.currencySymbol,
+				isAll: false,
+				list: [],
+				schemas: {},
+				asc: false,
+				marketName: '',
+				tags: {},
+				itemName: '',
+				pager: {
+					page: 1,
+					pageSize: 10
+				},
+				total: 0, // 默认值为0
+				totalPrice: 0, // 默认值为0
+				isLoading: false,
+				isRefreshing: false,
+				filterParams: {
+					asc: false,
+					keywords: '',
+					tags: {},
+					itemName: ''
+				}
+			}
+		},
+		created() {
+			this.getOnSaleList();
+		},
+		computed: {
+			isShow() {
+				return this.list.some(item => item.isSelect);
+			},
+			selectList() {
+				return this.list.filter(item => item.isSelect);
+			},
+			formattedTotalPrice() {
+				if (!this.totalPrice) return '0.00';
+				return parseFloat(this.totalPrice).toLocaleString(undefined, {
+					minimumFractionDigits: 2,
+					maximumFractionDigits: 2
+				});
+			}
+		},
+		methods: {
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			/**
+			 * 改价饰品
+			 */
+			changePriceSubmit() {
+				uni.$u.route({
+					url: '/pages/shop/order-manage/change-price',
+					params: {
+						list: encodeURIComponent(JSON.stringify(this.selectList)),
+						schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+						mode: 'sell'
+					}
+				})
+			},
+
+			/**
+			 * 全选
+			 */
+			itemAll() {
+				this.isAll = !this.isAll;
+				this.list.forEach(item => {
+					item.isSelect = this.isAll ? true : false;
+				})
+			},
+			/**
+			 * 下架
+			 */
+			async delistSubmit() {
+				uni.showLoading({
+					title: this.i18n.t('app.system.tips.please_wait'),
+					mask: true
+				});
+				try {
+					const ids = this.selectList?.map(i => i.id);
+					const res = await OrderItemRemovedApi({
+						ids: ids
+					});
+					if (res.code == 0) {
+						uni.showToast({
+							title: this.i18n.t('app.system.message.success'),
+							icon: 'none'
+						})
+						this.refresh();
+					} else {
+						throw new Error(res.msg || this.i18n.t('app.system.tips.request_failed'));
+					}
+				} catch (error) {
+					console.log(error);
+					uni.showToast({
+						title: error.message || this.i18n.t('app.system.tips.request_failed'),
+						icon: 'none'
+					});
+				} finally {
+					uni.hideLoading();
+				}
+			},
+			async getOnSaleList() {
+				let params = {
+					appId: this.appid,
+					field: this.filterParams.tags.field ? this.filterParams.tags.field : "price",
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					asc: this.filterParams.tags.asc ? this.filterParams.tags.asc : this.filterParams.asc,
+					keywords: this.filterParams.keywords,
+					tags: this.filterParams.tags,
+					itemName: this.filterParams.itemName,
+					maxPrice: this.filterParams.tags.priceMax,
+					minPrice: this.filterParams.tags.priceMin,
+				}
+				const res = await ShopOnSaleListApi(params);
+				
+				// 安全访问后端返回的数据
+				const sells = res.datas?.sells || [];
+				const pagerData = res.datas?.pager || {};
+				const totalPrice = res.datas?.totalPrice || 0;
+				
+				if (sells.length > 0) {
+					const newItems = sells.map(item => ({ ...item, isSelect: false }));
+					this.schemas = { ...res.datas?.schemas || {} };
+					const processedNewItems = getItemListData(newItems, this.schemas);
+					if (this.pager.page === 1) {
+						this.list = processedNewItems;
+					} else {
+						this.list = [...this.list, ...processedNewItems];
+					}
+				} else if (this.pager.page === 1) {
+					this.list = [];
+				}
+				
+				// 安全获取总数，如果后端未返回则保持原值
+				this.total = pagerData.total || 0;
+				this.totalPrice = totalPrice;
+			},
+			refresh(e, type) {
+				uni.$u.debounce(async () => {
+					if (this.isRefreshing) return;
+					this.isRefreshing = true;
+					try {
+						this.isAll = false;
+						if (type == 'asc') {
+							this.filterParams.asc = e;
+						}
+						if (type == 'keywords') {
+							this.filterParams.keywords = e;
+						}
+						if (type == 'type') {
+							this.filterParams.tags = { ...e.tags };
+							this.filterParams.itemName = e.itemName;
+						}
+						this.pager.page = 1;
+						await this.getOnSaleList();
+					} catch (error) {
+						console.log(error);
+						uni.showToast({
+							title: error.message || this.i18n.t('app.system.tips.request_failed'),
+							icon: 'none'
+						});
+					} finally {
+						this.isRefreshing = false;
+					}
+				}, 500);
+			},
+			loadMore() {
+				// 如果当前列表长度已达到总数，或总数为0（表示无数据），则不再加载
+				if (this.total === 0 || this.list.length >= this.total) {
+					return;
+				}
+				this.pager.page++;
+				this.getOnSaleList();
+			},
+		},
+		onUnload() {
+			this.list = [];
+			this.schemas = {};
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+	.valuation-box {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 10rpx 0 15rpx;
+
+		.value {
+			font-size: $font-size-md;
+			color: $app-text-thirdly;
+			margin: 0 10rpx;
+		}
+	}
+
+	.container {
+		flex: 1;
+		background-color: $app-background;
+	}
+
+	.swiper-box {
+		flex: 1;
+		width: 750rpx;
+	}
+
+	.search-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+
+		.filter-icon {
+			width: 46rpx;
+			height: 40rpx;
+		}
+
+		.search-bar {
+			width: 660rpx;
+			height: 62rpx;
+			display: flex;
+			flex-direction: row;
+			border-radius: 3rpx;
+			align-items: center;
+			justify-content: center;
+			padding: 10rpx;
+			margin: 20rpx 14rpx 20rpx 0;
+			background: $app-surface-elevated;
+			position: relative;
+
+			.scan-box {
+				width: 70rpx;
+				height: 62rpx;
+				position: absolute;
+				right: 0rpx;
+				top: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 10rpx 15rpx;
+			}
+
+			.scan-icon {
+				position: absolute;
+				left: 20rpx;
+			}
+
+			.label {
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+				padding-top: 2rpx;
+				position: absolute;
+				left: 70rpx;
+			}
+		}
+	}
+
+	.select-content {
+		width: 750rpx;
+		height: 80rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding-left: 20rpx;
+		position: fixed;
+		left: 0;
+		bottom: 0;
+		background-color: $app-background;
+		border-top: 1rpx solid $app-surface;
+
+		.select-left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+
+			.select-all {
+				width: 30rpx;
+				height: 30rpx;
+				margin-right: 10rpx;
+			}
+
+			.select-value {
+				color: $app-text-primary;
+				font-size: $font-size-sm;
+			}
+		}
+
+		.select-right {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+
+			.up-shop-btn {
+				width: 200rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				font-size: $font-size-sm;
+				text-align: center;
+				color: $app-background;
+				background-color: $app-success-dark;
+			}
+
+			.change-price-btn {
+				width: 200rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				font-size: $font-size-sm;
+				text-align: center;
+				color: $app-background;
+				background-color: #a2896a;
+			}
+		}
+	}
+	
+	.empty-tip {
+		text-align: center;
+		padding: 100rpx 0;
+		color: $app-text-thirdly;
+		font-size: $font-size-md;
+	}
+</style>

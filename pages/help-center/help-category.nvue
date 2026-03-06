@@ -1,0 +1,85 @@
+<template>
+	<view>
+		<u-navbar :title="title" :autoBack="true" placeholder></u-navbar>
+		<view class="container">
+			<view class="content" v-for="notice in list" :key="notice.id" @click="goDetail(notice)">
+				<view class="left">
+					<text class="title">{{notice.title}}</text>
+				</view>
+				<u-icon name="arrow-right" size="14" color="#b9b9b9"></u-icon>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		GetHelpListApi
+	} from '@/api/modules/help.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				title: '',
+				categoryCode: '',
+				list: []
+			}
+		},
+		onLoad(options) {
+			if (options.item) {
+				let item = JSON.parse(decodeURIComponent(options.item));
+				this.categoryCode = item.categoryCode;
+				this.title = item.label;
+			}
+		},
+		mounted() {
+			this.getQueryList();
+		},
+		methods: {
+			async getQueryList() {
+				const res = await GetHelpListApi({
+					categoryCode: this.categoryCode
+				});
+				if (res) {
+					this.list = res.datas;
+				}
+			},
+			goDetail(item){
+				let stringify = encodeURIComponent(JSON.stringify(item))
+				uni.$u.route({
+					url: '/pages/help-center/show?item=' + encodeURIComponent(JSON.stringify(item))
+				});
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.container {
+		width: 750rpx;
+		padding: 0 20rpx;
+	}
+	
+	.content {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 20rpx 0;
+		border-bottom: 1rpx solid $app-surface-elevated;
+	
+		.left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+	
+			.title {
+				color: $app-text-secondary;
+				font-size: $font-size-md;
+			}
+		}
+	}
+</style>

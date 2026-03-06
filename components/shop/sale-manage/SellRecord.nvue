@@ -1,0 +1,404 @@
+<!-- 出售记录 -->
+<template>
+	<view>
+		<sort-time-filter mode="inventory" :appid="appid" :itemName="itemName" :tags="tags" :isStatus="true"
+			@ascTime="refresh($event,'asc')" @keywords="refresh($event,'keywords')"
+			@filterType="refresh($event,'type')"></sort-time-filter>
+		<u-skeleton :loading="isLoading" rows="10">
+			<list-refresh :dataList="list" :total="total" :height="88" @refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item }">
+					<view class="pending-shopment-item" v-if="item" @click="goOrderDetail(item)">
+						<view class="item-header">
+							<text class="item-order-no">{{createTime(item)}}</text>
+							<text v-if="[2, 3, 4, 5, 6].includes(item.status)" class="item-status"
+								:style="{color: [5, 6].includes(item.status) ? 'green' : '#c22121' }">{{[2, 3, 4, 6].includes(item.status) ? (item.status!=6?item.statusName: i18n.t('app.trade.sale.success')) : item.statusName}}</text>
+							<text v-if="![2, 3, 4, 5, 6,-1].includes(item.status)"
+								class="item-status">{{item.statusName}}</text>
+							<text v-if="![2, 3, 4, 5, 6].includes(item.status)"
+								class="item-status">{{item.cancel_desc ? item.cancel_desc : item.statusName}}</text>
+						</view>
+						<view class="item-info" v-if="item.details.length == 1">
+							<PhaseItem :item="item.details[0]" :schema="schemas[item.details[0].market_hash_name]"
+								:width="180" :schemas="stickers"></PhaseItem>
+							<view class="price-wrap">
+								<view class="left">
+									<text class="market-name">{{item.details[0].market_name}}</text>
+									<text class="wear"
+										v-if="item.details[0].paint_wear">{{item.details[0].paint_wear}}</text>
+									<wear-progress-bar v-if="item.details[0].paint_wear"
+										:paintWear="item.details[0].paint_wear" :width="235"></wear-progress-bar>
+								</view>
+								<view class="right">
+									<view class="time" v-if="item.protection_time&&item.status==5">
+										<text class="time__item">{{ item.remainTime }}
+										</text>
+									</view>
+									<text class="market-price">{{currencySymbol + ' ' + item.price}}</text>
+								</view>
+							</view>
+						</view>
+						<view class="item-info" v-else>
+							<view class="item-details-list">
+								<PhaseItem class="item" v-for="(j,idx) in item.details" :key="j.id" :item="j"
+									:schema="schemas[j.market_hash_name]" :width="172"></PhaseItem>
+							</view>
+							<text class="item-nums"
+								:style="getNumsStyle(item.details.length)">+{{ item.details.length - 3 }}</text>
+							<view class="multiple-right">
+								<view class="time" v-if="item.protection_time&&item.status==5">
+									<text class="time__item">{{ item.remainTime }}
+									</text>
+								</view>
+								<text class="total-cost"
+									v-if="item.price">{{ currencySymbol + ' ' + item.price }}</text>
+							</view>
+						</view>
+					</view>
+				</template>
+			</list-refresh>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import PhaseItem from '@/components/game-item/PhaseItem.nvue';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import SortTimeFilter from '@/components/layout/SortTimeFilter.nvue';
+	import StickerList from '@/components/game-item/StickerList.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		ShopSellRecordApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		getRemainTime
+	} from '@/utils/dq/goods.js';
+
+	export default {
+		props: ['type'],
+		components: {
+			PhaseItem,
+			ListRefresh,
+			SortTimeFilter,
+			StickerList,
+			WearProgressBar
+		},
+		data() {
+			return {
+				i18n: i18n,
+				appid: getGameType(),
+				currencySymbol: config.currencySymbol,
+				list: [],
+				schemas: {},
+				users: {},
+				stickers: {},
+				tags: {},
+				itemName: '',
+				marketName: '',
+				ascTime: false,
+				asc:'',
+				field:'',
+				pager: {
+					page: 1,
+					pageSize: 10
+				},
+				total: 0,
+				isLoading: false,
+				startTime: undefined,
+				endTime: undefined,
+				statusList:undefined,
+			}
+		},
+		created() {
+			this.getSellRecordList();
+		},
+		mounted() {
+			uni.$on('order-deliver-success', () => {
+				this.refresh();
+			});
+		},
+		methods: {
+			getNumsStyle(length) {
+				if (length <= 3) {
+					return {
+						opacity: 0
+					}
+				}
+				return {
+					opacity: 1
+				}
+			},
+			getRarityColor(market_hash_name) {
+				try {
+					return this.schemas[market_hash_name].tags.rarity.color
+				} catch (e) {
+					return 'b0c3d9'
+				}
+			},
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async getSellRecordList() {
+			  try {
+			    uni.showLoading({ mask: true });
+			
+			    // 1. 先组装参数
+			    const params = {
+			      appId: this.appid,
+			      isload: true,
+			      page: this.pager.page,
+			      pageSize: this.pager.pageSize,
+			      statusList:(Array.isArray(this.statusList) && this.statusList.length)? this.statusList: [-1, 1, 3, 4, 5, 6, 9],
+			      asc: this.asc,
+				  tags:this.tags,
+			      field: this.field,
+			      keywords: this.marketName,
+			      itemName: this.itemName,
+			      startTime: this.startTime,
+			      endTime: this.endTime
+			    };
+			    // 2. 洗掉空字符串、空对象、空数组
+			    Object.keys(params).forEach(k => {
+			      const v = params[k];
+			      if (v === '' || v == null) delete params[k];
+			      else if (JSON.stringify(v) === '{}') delete params[k];
+			      else if (Array.isArray(v) && v.length === 0) delete params[k];
+			    });
+			    const res = await ShopSellRecordApi(params);
+			    if (res.code === 0) {
+			      const records = res.datas.records;
+			      this.list = this.list.concat(records);
+			      this.getRemainTimeBatches(records);
+			      this.schemas = res.datas.schemas;
+			      this.users = res.datas.users;
+			      this.stickers = res.datas.stickers;
+				  if(res.datas.pager){
+				  	// 取到值后强转数字，不存在就给 0
+				  	this.total = Number(res.datas.pager?.total ?? 0);
+					}
+			    }
+			  } catch (e) {
+			    console.error('【出售记录错误】', e, e?.response?.data ?? e);
+			  } finally {
+			    uni.hideLoading();
+			  }
+			},
+			getRemainTimeBatches(records, size = 5) {
+				let count = 0;
+				const processBatche = () => {
+					const endIndex = Math.min(count + size, records.length);
+					for (let i = count; i < endIndex; i++) {
+						const item = records[i];
+						this.$set(item, 'remainTime', getRemainTime(item.protection_time, item.id));
+					}
+					count = endIndex;
+					if (count < records.length) {
+						setTimeout(processBatche, 0);
+					}
+				}
+				processBatche();
+			},
+			goOrderDetail(item) {
+				uni.$u.route('/pages/shop/order-manage/order-purchase-detail', {
+					item: encodeURIComponent(JSON.stringify(item)),
+					schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+					users: encodeURIComponent(JSON.stringify(this.users)),
+					stickers: encodeURIComponent(JSON.stringify(this.stickers)),
+				});
+			},
+			getItemImage(market_hash_name) {
+				try {
+					return this.schemas[market_hash_name].image_url;
+				} catch (error) {
+					return '';
+				}
+			},
+			createTime(item) {
+				return uni.$u.timeFormat(item.create_time, 'yyyy-mm-dd hh:MM');
+			},
+			refresh(e, type) {
+				uni.$u.debounce(() => {
+					try {
+						this.isLoading = true;
+						this.startTime = undefined;
+						this.endTime = undefined;
+						if (type == 'asc') {
+							this.asc=e;
+							this.field="time";
+						}
+						if (type == 'keywords') {
+							this.marketName = e;
+						}
+						if (type == 'type') {
+							this.tags = e.tags;
+							this.statusList  = e.statusList
+							this.itemName = e.itemName;
+							this.startTime = e.startTime;
+							this.endTime = e.endTime;
+							this.asc=e.sortAsc;
+							this.field=e.sortField;
+							
+						}
+						this.list = [];
+						this.pager.page = 1;
+						this.getSellRecordList();
+					} catch (error) {
+						console.log(error)
+						//TODO handle the exception
+					} finally {
+						this.isLoading = false;
+					}
+				}, 500);
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getSellRecordList();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.pending-shopment-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding: 20rpx 20rpx 30rpx;
+		border-bottom: 1rpx solid $app-surface;
+		position: relative;
+
+		.item-status {
+			color: $app-text-thirdly;
+			font-size: $font-size-sm;
+			padding-right: 10rpx;
+		}
+
+		.item-header {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.item-order-no {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			padding: 10rpx 0;
+		}
+	}
+
+	.multiple-right {
+		width: 140rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		justify-content: center;
+	}
+
+	.item-info {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		position: relative;
+
+		.item-details-list {
+			width: 530rpx;
+			display: flex;
+			flex-direction: row;
+			overflow: hidden;
+		}
+
+		.item {
+			margin-right: 10rpx;
+		}
+
+		.item-nums {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			margin-left: 5rpx;
+		}
+
+		.total-cost {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			font-weight: bold;
+			padding: 10rpx;
+			padding-right: 0;
+		}
+
+		.price-wrap {
+			width: 525rpx;
+			height: 52px;
+			display: flex;
+			flex-direction: row;
+			align-items: flex-start;
+			justify-content: center;
+			padding: 10rpx 0 0 20rpx;
+			position: relative;
+
+			.left {
+				width: 350rpx;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-start;
+			}
+
+			.right {
+				width: 140rpx;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-end;
+			}
+
+			.market-name {
+				width: 350rpx;
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				lines: 1;
+				text-overflow: ellipsis;
+			}
+
+			.market-price {
+				font-size: $font-size-md;
+				color: $app-text-price;
+				font-weight: bold;
+				text-align: right;
+				padding-top: 20rpx;
+				padding-right: 0;
+			}
+
+			.wear {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				padding: 5rpx 0;
+			}
+
+			.item-sticker-list {
+				margin-top: 10rpx;
+			}
+		}
+	}
+
+	.time {
+		@include flex;
+		align-items: center;
+
+		&__item {
+			color: orange;
+			font-size: $font-size-count-time;
+		}
+	}
+</style>

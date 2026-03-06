@@ -1,0 +1,117 @@
+<!-- 待收货 -->
+<template>
+	<view>
+		<sort-time-filter :appid="appid" :itemName="itemName" :tags="tags" @ascTime="refresh($event,'asc')"
+			@keywords="refresh($event,'keywords')" @filterType="refresh($event,'type')"></sort-time-filter>
+		<u-skeleton :loading="isLoading" rows="10">
+			<list-refresh :dataList="list" :total="list.length" height="88" @refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item }">
+					<order-receive-item :schemas="schemas" :item="item" :users="users"
+						@reload="refresh"></order-receive-item>
+				</template>
+			</list-refresh>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import SortTimeFilter from '@/components/layout/SortTimeFilter.nvue';
+	import OrderReceiveItem from '@/components/shop/order-manage/OrderReceiveItem.nvue';
+
+	import {
+		ShopBuyReceivingApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	export default {
+		components: {
+			ListRefresh,
+			SortTimeFilter,
+			OrderReceiveItem
+		},
+		data() {
+			return {
+				i18n: i18n,
+				appid: getGameType(),
+				list: [],
+				schemas: {},
+				users: {},
+				ascTime: false,
+				marketName: '',
+				tags: {},
+				itemName: '',
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				total: null,
+				isLoading: false,
+			}
+		},
+		mounted() {
+			this.getBuyRecord();
+			uni.$on('receive-goods', () => {
+				this.refresh();
+			});
+		},
+		beforeDestroy() {
+			uni.$off('receive-goods');
+		},
+		methods: {
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async getBuyRecord() {
+				let params = {
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					isload: false,
+					asc: this.ascTime,
+					field: 'time',
+					keywords: this.marketName,
+					tags: this.tags,
+					itemName: this.itemName
+				}
+				const res = await ShopBuyReceivingApi(params);
+				if (res.code == 0) {
+					this.users = res.datas.users;
+					this.schemas = res.datas.schemas;
+					this.list = this.list.concat(res.datas.sends);
+				}
+			},
+			async refresh(e, type) {
+				try {
+					this.isLoading = true;
+					if (type == 'asc') {
+						this.ascTime = e;
+					}
+					if (type == 'keywords') {
+						this.marketName = e;
+					}
+					if (type == 'type') {
+						this.tags = e.tags;
+						this.itemName = e.itemName;
+					}
+					this.list = [];
+					this.pager.page = 1;
+					await this.getBuyRecord();
+				} catch (e) {
+					console.log(e)
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getBuyRecord();
+			},
+		}
+	}
+</script>

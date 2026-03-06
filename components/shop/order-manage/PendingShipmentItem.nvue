@@ -1,0 +1,167 @@
+<template>
+	<view class="pending-item">
+		<base-item :imageUrl="schemas[item.details[0].market_hash_name].image_url" :width="120"
+			:num="item.nums"></base-item>
+		<view class="price-wrap">
+			<text class="market-name">{{item.details[0].market_name}}</text>
+			<text class="market-price">{{currencySymbol + item.price}}</text>
+		</view>
+		<view class="item-buyer-user">
+			<image class="buyer-user-avatar" :src="getImageLocal(users[item.buyer].avatar)"></image>
+			<text class="buyer-user-name">{{users[item.buyer].nickname}}</text>
+			<text class="buyer-user-yearsLevel">{{users[item.buyer].yearsLevel}}</text>
+			<text class="buyer-user-level">{{users[item.buyer].level}}</text>
+		</view>
+		<text class="send-btn" v-if="item.status == 2" @click="deliverSubmit(item)">发起报价</text>
+		<text class="success-btn" v-if="item.status == 3" @click="deliverSubmit()">√</text>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+
+	export default {
+		props: ['item', 'schemas', 'users'],
+		components: {
+			BaseItem,
+			WearProgressBar
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+			}
+		},
+		methods: {
+			getImageLocal(avatar) {
+				let imagePath = 'https://www.tronskins.com/fms/image';
+				if (!avatar || typeof avatar !== 'string') {
+					return '/static/image/user/none.png';
+				}
+				return avatar.startsWith("http") ? avatar : imagePath + avatar;
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.pending-item {
+		width: 580rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding: 20rpx;
+		background-color: $app-background;
+		margin: 10rpx;
+	}
+
+	.item-abradability {
+		padding: 5rpx 0;
+		font-size: $font-size-sm;
+		color: $app-text-secondary;
+	}
+
+	.price-wrap {
+		width: 410rpx;
+		padding-left: 20rpx;
+		position: relative;
+
+		.market-name {
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+
+		.market-price {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			font-weight: bold;
+			padding-top: 10rpx;
+		}
+	}
+
+	.send-btn {
+		position: absolute;
+		right: 20rpx;
+		bottom: 20rpx;
+		font-size: $font-size-sm;
+		padding: 8rpx 14rpx;
+		border-radius: 4rpx;
+		color: $app-background;
+		background-color: rgb(73, 111, 192);
+	}
+
+	.success-btn {
+		position: absolute;
+		right: 20rpx;
+		bottom: 20rpx;
+		font-weight: bold;
+		padding: 8rpx 14rpx;
+		border-radius: 4rpx;
+		color: $app-background;
+		font-size: $font-size-sm;
+		background-color: $app-success-dark;
+	}
+
+	.item-buyer-user {
+		width: 280rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		flex-wrap: wrap;
+		padding: 5rpx 0;
+		background-color: #eef3ec;
+		margin-top: 10rpx;
+		border-radius: 5rpx;
+
+
+		.buyer-user-avatar {
+			width: 35rpx;
+			height: 35rpx;
+			border-radius: 30rpx;
+			margin-left: 5rpx;
+			background-color: $app-background-black;
+		}
+
+		.buyer-user-name {
+			width: 140rpx;
+			text-align: left;
+			margin-left: 10rpx;
+			color: $app-text-primary;
+			font-size: $font-size-sm;
+		}
+
+		.buyer-user-yearsLevel {
+			width: 30rpx;
+			height: 30rpx;
+			line-height: 30rpx;
+			border-radius: 5rpx;
+			text-align: center;
+			border-radius: 30rpx;
+			margin-right: 20rpx;
+			font-size: $font-size-sm;
+			color: $app-background-black;
+			border: 2rpx solid $app-background-black;
+		}
+
+		.buyer-user-level {
+			width: 30rpx;
+			height: 30rpx;
+			line-height: 30rpx;
+			border-radius: 5rpx;
+			text-align: center;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: $app-background-black;
+		}
+	}
+</style>

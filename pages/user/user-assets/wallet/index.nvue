@@ -1,0 +1,239 @@
+<!-- 我的钱包 -->
+<template>
+	<view class="wallet-container" v-if="userInfo">
+		<u-navbar :title="i18n.t('app.user.wallet.title')" :autoBack="true" bgColor="#6471bf" :titleStyle="{color:'#fff'}"
+			leftIconColor="#fff" placeholder></u-navbar>
+		<text class="total-assets"
+			v-if="userInfo.fund&&userInfo.fund.balance">{{i18n.t('app.user.wallet.assets_total')}}({{currencySymbol+' '+userInfo.fund.balance}})</text>
+		<view class="wallet-list">
+			<view class="wallet-item" v-for="purse in walletList" :key="purse.field" @click="toDetails(purse)">
+				<text class="value">{{ formatValue(userInfo, purse.field) }}</text>
+				<view class="wrap">
+					<image class="icon" :src="purse.icon"></image>
+					<text class="label">{{ purse.label }}</text>
+				</view>
+			</view>
+		</view>
+		<view class="wallet-fund-item" v-for="(fund,index) in fundList" :key="index" @click="route(fund)">
+			<image class="icon" :src="fund.icon"></image>
+			<text class="label">{{ fund.label }}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import {
+		userInfoApi
+	} from '@/api/modules/user.js';
+	import {
+		CheckShopEnableApi
+	} from '@/api/modules/shop/shop-product.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				userInfo: null,
+				fundList: [{
+						icon: "/static/image/withdraw/recharge.png",
+						label: i18n.t('app.user.recharge.title'),
+						vale: 'recharge',
+						path: "/pages/user/user-assets/wallet/recharge"
+					},
+					{
+						icon: "/static/image/withdraw/withdraw.png",
+						label: i18n.t('app.user.withdraw.title'),
+						vale: 'withdraw',
+						path: "/pages/user/user-assets/wallet/withdraw"
+					},
+					{
+						icon: "/static/image/withdraw/fund-record.png",
+						label: i18n.t('app.user.wallet.flow'),
+						path: "/pages/user/user-assets/wallet/fund-record"
+					},
+					{
+						icon: "/static/image/withdraw/clock.png",
+						label: i18n.t('app.user.wallet.unsettled_details'),
+						path: "/pages/user/user-assets/wallet/settlement"
+					}
+				],
+				walletList: [{
+					field: 'fund.available',
+					label: i18n.t('app.user.wallet.available'),
+					icon: "/static/image/withdraw/ustd.png",
+					path: "/pages/user/user-assets/wallet/fund-record"
+				}, {
+					field: 'fund.locked',
+					label: i18n.t('app.user.wallet.lock_amount'),
+					icon: "/static/image/withdraw/locked.png",
+					path: "/pages/user/user-assets/wallet/fund-locked"
+				}, {
+					field: 'fund.gift',
+					label: i18n.t('app.user.wallet.gift'),
+					icon: "/static/image/withdraw/gift.png",
+				}, {
+					field: 'fund.settlement',
+					label: i18n.t('app.user.wallet.unsettled'),
+					icon: "/static/image/withdraw/settlement.png",
+					path: "/pages/user/user-assets/wallet/settlement"
+				}],
+			}
+		},
+		mounted() {
+			this.getUserInfo();
+			uni.$on('submit', () => {
+				this.reload();
+			});
+		},
+		methods: {
+			async getUserInfo() {
+				try {
+					const res = await userInfoApi();
+					if (res.code == 0) {
+						this.userInfo = res.datas;
+					}
+				} catch (error) {
+					//TODO handle the exception
+				}
+			},
+			toDetails(purse) {
+				if (['gift'].includes(purse.field)) return;
+				uni.$u.route(purse.path);
+			},
+			reload() {
+				this.userInfo = null;
+				this.getUserInfo();
+			},
+			// 统一值格式化方法
+			formatValue(source, fieldPath) {
+				try {
+					const value = fieldPath.split('.').reduce((obj, key) => obj[key], source)
+					return value !== undefined ? this.currencySymbol + ' ' + value : '-'
+				} catch {
+					return '-'
+				}
+			},
+			/**
+			 * 检测当前用户充值，提现功能是否被禁用
+			 * isRechargeEnable:充值
+			 * isEnableWithdraw:提现
+			 */
+			async checkWithdrawEnable() {
+				let obj = {
+					isEnableRecharge: false,
+					isEnableWithdraw: false,
+				}
+				try {
+					const res = await CheckShopEnableApi();
+					if (res.code == 0) {
+						obj.isRechargeEnable = res.datas.isEnableRecharge;
+						obj.isWithdrawEnable = res.datas.isEnableWithdraw;
+					}
+					return obj;
+				} catch (error) {
+					return obj;
+					//TODO handle the exception
+				}
+			},
+			route(item) {
+				let withdrawStatus = this.checkWithdrawEnable();
+				if (item.value == 'recharge' && !withdrawStatus.isEnableRecharge) {
+					uni.$u.toast(i18n.t('app.user.recharge.disable'));
+					return
+				}
+				if (item.value == 'withdraw' && !withdrawStatus.isWithdrawEnable) {
+					uni.$u.toast(i18n.t('app.user.withdraw.disable'));
+					return
+				}
+				uni.$u.route(item.path);
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+
+	.wallet-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+
+		.total-assets {
+			width: 750rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			color: $app-background;
+			background: $app-background-blue;
+		}
+	}
+
+	.wallet-list {
+		width: 750rpx;
+		background: $app-background-blue;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 40rpx 0;
+
+		.wallet-item {
+			width: 187.5rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+
+			.wrap {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				margin-top: 20rpx;
+
+				.icon {
+					width: 24rpx;
+					height: 24rpx;
+					margin-right: 5rpx;
+				}
+
+				.label {
+					color: $app-background;
+					font-size: $font-size-sm;
+					text-align: center;
+				}
+			}
+
+			.value {
+				color: $app-background;
+				font-size: $font-size-md;
+				font-weight: bold;
+			}
+		}
+	}
+
+	.wallet-fund-item {
+		width: 750rpx;
+		padding: 30rpx 20rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		border-bottom: 1rpx solid $app-background;
+
+		.label {
+			font-size: $font-size-md;
+			margin-left: 20rpx;
+			color: $app-text-primary;
+		}
+
+		.icon {
+			width: 30rpx;
+			height: 30rpx;
+		}
+	}
+</style>

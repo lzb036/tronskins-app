@@ -1,0 +1,585 @@
+<template>
+	<view class="debug-page">
+		<u-navbar title="认证调试" :autoBack="true" fixed safeAreaInsetTop></u-navbar>
+		<view :style="{ height: statusBarHeight + 44 + 'px' }"></view>
+
+		<scroller class="debug-scroll">
+			<view class="card">
+				<text class="card-title">当前认证状态</text>
+
+				<view class="row">
+					<text class="label">登录状态</text>
+					<text :class="snapshot.loggedIn ? 'value ok' : 'value bad'">
+						{{ snapshot.loggedIn ? '已登录' : '未登录' }}
+					</text>
+				</view>
+				<view class="row">
+					<text class="label">认证头</text>
+					<text class="value mono">{{ snapshot.authHeader }}</text>
+				</view>
+				<view class="row">
+					<text class="label">Access Token</text>
+					<text class="value mono">{{ tokenPreview }}</text>
+				</view>
+				<view class="row">
+					<text class="label">Refresh Token</text>
+					<text class="value mono">{{ snapshot.loggedIn ? 'HttpOnly Cookie（前端不可读）' : '(空)' }}</text>
+				</view>
+				<view class="row">
+					<text class="label">Access过期时间</text>
+					<text class="value">{{ accessExpireAtText }}</text>
+				</view>
+				<view class="row">
+					<text class="label">Access剩余时长</text>
+					<text class="value">{{ accessTtlText }}</text>
+				</view>
+				<view class="row no-border">
+					<text class="label">最近刷新</text>
+					<text class="value">{{ snapshot.updatedAt }}</text>
+				</view>
+			</view>
+
+			<view class="card">
+				<view class="action-head">
+					<text class="action-title">调试动作</text>
+					<text class="action-subtitle">当前执行：{{ running || '空闲' }}</text>
+				</view>
+
+				<view class="btn-group">
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'刷新状态'" @click="handleRefreshStatus"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'手动 refresh'" @click="handleManualRefresh"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'请求用户'" @click="handleRequestUserInfo"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'并发请求 x5'" @click="handleConcurrentRequest"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'设为已过期'" @click="handleSetExpired"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'设为1分钟后过期'" @click="handleSetFutureExpire"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'写入无效Token'" @click="handleSetInvalidToken"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'测试过期自动刷新'" @click="handleSimulateExpiredFlow"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="primary" :customStyle="btnStylePrimary" :text="'测试401自动刷新'" @click="handleSimulate401Flow"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="success" :customStyle="btnStyleSuccess" :text="'恢复初始Token'" @click="handleRestoreOriginalToken"></u-button>
+					</view>
+					<view class="btn-cell">
+						<u-button type="error" :customStyle="btnStyleError" :text="'清理认证状态'" @click="handleClearAuth"></u-button>
+					</view>
+				</view>
+			</view>
+
+			<view class="card">
+				<view class="log-head">
+					<text class="card-title no-margin">执行日志</text>
+					<u-button plain :customStyle="btnStylePlain" :text="'清空'" @click="clearLogs"></u-button>
+				</view>
+
+				<view v-if="logs.length === 0" class="empty-log">
+					<text>暂无日志</text>
+				</view>
+				<view v-else class="log-list">
+					<view v-for="item in logs" :key="item.id" :class="['log-item', 'log-' + item.level]">
+						<text class="log-time">{{ item.time }}</text>
+						<text class="log-text">{{ item.text }}</text>
+					</view>
+				</view>
+			</view>
+		</scroller>
+	</view>
+</template>
+
+<script>
+import {
+	userInfoApi
+} from '@/api/modules/user.js'
+import {
+	RefreshAccessTokenApi
+} from '@/api/modules/login/auth.js'
+import {
+	getUserToken,
+	setAccessToken,
+	setAccessTokenExpireTime,
+	clearAuthStorage,
+	setAppUserInfo,
+	getAuthHeaderName,
+	getAccessTokenExpireTime
+} from '@/utils/storage/modules/user.js'
+
+export default {
+	data() {
+		return {
+			statusBarHeight: 0,
+			nowTick: Date.now(),
+			running: '',
+			logs: [],
+			logId: 0,
+			originalToken: '',
+			tickTimer: null,
+			snapshot: {
+				loggedIn: false,
+				token: '',
+				authHeader: 'X-Service-Authorization',
+				accessTokenExpireTime: null,
+				updatedAt: '-'
+			},
+			btnStylePrimary: {
+				height: '76rpx',
+				fontSize: '24rpx',
+				borderRadius: '14rpx'
+			},
+			btnStyleSuccess: {
+				height: '76rpx',
+				fontSize: '24rpx',
+				borderRadius: '14rpx'
+			},
+			btnStyleError: {
+				height: '76rpx',
+				fontSize: '24rpx',
+				borderRadius: '14rpx'
+			},
+			btnStylePlain: {
+				height: '62rpx',
+				fontSize: '22rpx',
+				borderRadius: '12rpx'
+			}
+		}
+	},
+	computed: {
+		tokenPreview() {
+			const token = this.snapshot.token || ''
+			if (!token) return '(空)'
+			if (token.length <= 28) return token
+			return `${token.slice(0, 14)}...${token.slice(-10)}`
+		},
+		accessExpireAtText() {
+			const expireTime = this.snapshot.accessTokenExpireTime
+			if (!expireTime) return '未知'
+			return this.formatDateTime(expireTime)
+		},
+		accessTtlText() {
+			return this.formatDuration(this.snapshot.accessTokenExpireTime)
+		}
+	},
+	onShow() {
+		this.refreshSnapshot()
+		this.startTickTimer()
+	},
+	onHide() {
+		this.stopTickTimer()
+	},
+	onUnload() {
+		this.stopTickTimer()
+	},
+	created() {
+		const systemInfo = uni.getSystemInfoSync()
+		this.statusBarHeight = systemInfo.statusBarHeight || 0
+	},
+	mounted() {
+		this.refreshSnapshot()
+		this.startTickTimer()
+		this.appendLog('info', '认证调试页已就绪')
+	},
+	beforeDestroy() {
+		this.stopTickTimer()
+	},
+	methods: {
+		pad2(value) {
+			return String(value).padStart(2, '0')
+		},
+		formatDateTime(value) {
+			const date = new Date(value)
+			if (Number.isNaN(date.getTime())) return '未知'
+			const year = date.getFullYear()
+			const month = this.pad2(date.getMonth() + 1)
+			const day = this.pad2(date.getDate())
+			const hour = this.pad2(date.getHours())
+			const minute = this.pad2(date.getMinutes())
+			const second = this.pad2(date.getSeconds())
+			return `${year}年${month}月${day}日 ${hour}:${minute}:${second}`
+		},
+		formatDuration(expireTime) {
+			if (!expireTime) return '未知'
+			const diff = Number(expireTime) - this.nowTick
+			if (diff <= 0) return '0天00时00分00秒'
+			const totalSeconds = Math.floor(diff / 1000)
+			const days = Math.floor(totalSeconds / 86400)
+			const hours = Math.floor((totalSeconds % 86400) / 3600)
+			const minutes = Math.floor((totalSeconds % 3600) / 60)
+			const seconds = totalSeconds % 60
+			return `${days}天${this.pad2(hours)}时${this.pad2(minutes)}分${this.pad2(seconds)}秒`
+		},
+		getErrorMessage(error) {
+			if (error && error.message) return error.message
+			if (typeof error === 'string') return error
+			try {
+				return JSON.stringify(error)
+			} catch (e) {
+				return '未知错误'
+			}
+		},
+		appendLog(level, text) {
+			this.logId += 1
+			this.logs.unshift({
+				id: this.logId,
+				level,
+				text,
+				time: new Date().toLocaleTimeString()
+			})
+			if (this.logs.length > 80) {
+				this.logs = this.logs.slice(0, 80)
+			}
+		},
+		clearLogs() {
+			this.logs = []
+		},
+		startTickTimer() {
+			if (this.tickTimer) return
+			this.tickTimer = setInterval(() => {
+				this.nowTick = Date.now()
+			}, 1000)
+		},
+		stopTickTimer() {
+			if (!this.tickTimer) return
+			clearInterval(this.tickTimer)
+			this.tickTimer = null
+		},
+		async refreshSnapshot() {
+			const token = await getUserToken()
+			const expireTime = getAccessTokenExpireTime()
+			this.snapshot.loggedIn = !!token
+			this.snapshot.token = token || ''
+			this.snapshot.authHeader = getAuthHeaderName()
+			this.snapshot.accessTokenExpireTime = expireTime
+			this.snapshot.updatedAt = this.formatDateTime(Date.now())
+			this.nowTick = Date.now()
+			if (!this.originalToken && token) {
+				this.originalToken = token
+			}
+		},
+		async runAction(actionName, action) {
+			if (this.running) {
+				uni.$u.toast(`正在执行：${this.running}`)
+				return
+			}
+			this.running = actionName
+			this.appendLog('info', `${actionName} 开始`)
+			try {
+				await action()
+			} catch (error) {
+				this.appendLog('error', `${actionName} 失败：${this.getErrorMessage(error)}`)
+			} finally {
+				await this.refreshSnapshot()
+				this.running = ''
+			}
+		},
+		async handleRefreshStatus() {
+			await this.runAction('刷新状态', async () => {
+				this.appendLog('success', '认证状态已刷新')
+			})
+		},
+		async handleManualRefresh() {
+			await this.runAction('手动刷新Token', async () => {
+				const result = await RefreshAccessTokenApi()
+				if (!result || (result.code !== 0 && result.code !== 200 && result.code !== '0' && result.code !== '200')) {
+					throw new Error((result && result.datas) || 'refresh 响应失败')
+				}
+				const data = (result && typeof result.datas === 'object' && result.datas) ? result.datas : {}
+				const accessToken = data.accessToken || data.token || ''
+				if (!accessToken) {
+					throw new Error('refresh 响应中未返回 access token')
+				}
+				await setAccessToken({
+					accessToken,
+					accessTokenExpireTime: data.accessTokenExpireTime,
+					refreshTokenExpireTime: data.refreshTokenExpireTime || data.refreshExpireTime,
+					header: data.header
+				})
+				this.appendLog('success', `refresh 成功，Access过期：${data.accessTokenExpireTime || '未知'}`)
+			})
+		},
+		async handleRequestUserInfo() {
+			await this.runAction('请求用户信息', async () => {
+				const res = await userInfoApi()
+				if (res && res.code === 0) {
+					this.appendLog('success', `用户请求成功：${(res.datas && (res.datas.nickname || res.datas.id)) || 'ok'}`)
+					return
+				}
+				throw new Error((res && res.datas) || '用户请求失败')
+			})
+		},
+		async handleConcurrentRequest() {
+			await this.runAction('并发请求用户信息', async () => {
+				const tasks = Array.from({ length: 5 }, () => userInfoApi()
+					.then(res => ({ ok: true, res }))
+					.catch(err => ({ ok: false, err }))
+				)
+				const results = await Promise.all(tasks)
+				let successCount = 0
+				let failCount = 0
+				results.forEach(item => {
+					if (item.ok && item.res && item.res.code === 0) {
+						successCount += 1
+					} else {
+						failCount += 1
+					}
+				})
+				this.appendLog('success', `并发完成：成功 ${successCount}，失败 ${failCount}`)
+			})
+		},
+		async handleSetExpired() {
+			await this.runAction('设置过期时间', async () => {
+				const token = await getUserToken()
+				if (!token) throw new Error('当前无 token')
+				setAccessTokenExpireTime(Date.now() - 60 * 1000)
+				this.appendLog('success', '已设置 Access 为过期状态')
+			})
+		},
+		async handleSetFutureExpire() {
+			await this.runAction('设置未来过期时间', async () => {
+				const token = await getUserToken()
+				if (!token) throw new Error('当前无 token')
+				setAccessTokenExpireTime(Date.now() + 1 * 60 * 1000)
+				this.appendLog('success', '已设置 Access 为 1 分钟后过期')
+			})
+		},
+		async handleSetInvalidToken() {
+			await this.runAction('写入无效Token', async () => {
+				const token = await getUserToken()
+				if (token && !this.originalToken) this.originalToken = token
+				await setAccessToken({
+					accessToken: `invalid-token-${Date.now()}`,
+					accessTokenExpireTime: Date.now() + 10 * 60 * 1000,
+					header: getAuthHeaderName()
+				})
+				this.appendLog('success', '已写入无效 Token')
+			})
+		},
+		async handleSimulateExpiredFlow() {
+			await this.runAction('模拟过期自动刷新', async () => {
+				const token = await getUserToken()
+				if (!token) throw new Error('当前无 token')
+				setAccessTokenExpireTime(Date.now() - 1000)
+				this.appendLog('info', '已设置过期，开始请求用户信息')
+				const res = await userInfoApi()
+				if (res && res.code === 0) {
+					this.appendLog('success', '请求成功（过期自动刷新链路可用）')
+					return
+				}
+				throw new Error((res && res.datas) || '请求失败')
+			})
+		},
+		async handleSimulate401Flow() {
+			await this.runAction('模拟401自动刷新', async () => {
+				const oldToken = await getUserToken()
+				if (!oldToken) throw new Error('当前无 token')
+				if (!this.originalToken) this.originalToken = oldToken
+				await setAccessToken({
+					accessToken: `invalid-token-${Date.now()}`,
+					accessTokenExpireTime: Date.now() + 10 * 60 * 1000,
+					header: getAuthHeaderName()
+				})
+				this.appendLog('info', '已写入无效 Token，开始请求用户信息')
+				const res = await userInfoApi()
+				if (res && res.code === 0) {
+					this.appendLog('success', '请求成功（401自动刷新重试链路可用）')
+					return
+				}
+				throw new Error((res && res.datas) || '请求失败')
+			})
+		},
+		async handleRestoreOriginalToken() {
+			await this.runAction('恢复初始Token', async () => {
+				if (!this.originalToken) throw new Error('当前没有可恢复的 token')
+				await setAccessToken({
+					accessToken: this.originalToken,
+					header: getAuthHeaderName()
+				})
+				this.appendLog('success', '已恢复初始 Token')
+			})
+		},
+		async handleClearAuth() {
+			await this.runAction('清理认证状态', async () => {
+				await clearAuthStorage()
+				setAppUserInfo('')
+				this.appendLog('success', '认证状态已清理')
+			})
+		}
+	}
+}
+</script>
+
+<style scoped lang="scss">
+@import "../../theme.scss";
+
+.debug-page {
+	flex: 1;
+	background-color: #eef3ff;
+}
+
+.debug-scroll {
+	flex: 1;
+	padding: 20rpx;
+}
+
+.card {
+	background: $app-background;
+	border: 1rpx solid #d7e0f7;
+	border-radius: 16rpx;
+	padding: 20rpx;
+	margin-bottom: 20rpx;
+}
+
+.card-title {
+	font-size: $font-size-md;
+	font-weight: bold;
+	color: $app-text-primary;
+	margin-bottom: 16rpx;
+}
+
+.card-title.no-margin {
+	margin-bottom: 0;
+}
+
+.card-subtitle {
+	font-size: $font-size-sm;
+	color: $app-text-hint;
+	margin-bottom: 16rpx;
+}
+
+.action-head {
+	width: 100%;
+	padding: 8rpx 12rpx 14rpx 12rpx;
+	margin-bottom: 10rpx;
+	background-color: #f5f8ff;
+	border-radius: 10rpx;
+}
+
+.action-title {
+	font-size: 28rpx;
+	font-weight: bold;
+	color: #1f2d4d;
+}
+
+.action-subtitle {
+	margin-top: 6rpx;
+	font-size: 24rpx;
+	color: #475a85;
+}
+
+.row {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: flex-start;
+	padding: 12rpx 0;
+	border-bottom: 1rpx solid #edf1fb;
+}
+
+.row.no-border {
+	border-bottom: none;
+}
+
+.label {
+	width: 180rpx;
+	font-size: $font-size-sm;
+	color: $app-text-hint;
+}
+
+.value {
+	flex: 1;
+	text-align: right;
+	font-size: $font-size-sm;
+	color: $app-text-primary;
+}
+
+.value.ok {
+	color: $app-text-success;
+}
+
+.value.bad {
+	color: $app-danger;
+}
+
+.value.mono {
+	font-family: Consolas, Monaco, 'Courier New', monospace;
+	font-size: $font-size-xs;
+	word-break: break-all;
+}
+
+.btn-group {
+	display: flex;
+	flex-direction: column;
+}
+
+.btn-cell {
+	width: 100%;
+	margin-bottom: 14rpx;
+}
+
+.btn-cell:last-child {
+	margin-bottom: 0;
+}
+
+.log-head {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12rpx;
+}
+
+.empty-log {
+	padding: 16rpx 0;
+	font-size: $font-size-sm;
+	color: $app-text-hint;
+}
+
+.log-list {
+	display: flex;
+	flex-direction: column;
+}
+
+.log-item {
+	border-radius: 10rpx;
+	border: 1rpx solid #dfe6f9;
+	padding: 12rpx;
+	margin-bottom: 10rpx;
+	background: #f7f9ff;
+}
+
+.log-item.log-success {
+	background: #eefbf2;
+	border-color: #c9efd8;
+}
+
+.log-item.log-error {
+	background: #fff1f1;
+	border-color: #f5c8c8;
+}
+
+.log-time {
+	font-size: $font-size-xs;
+	color: $app-text-hint;
+	margin-bottom: 6rpx;
+}
+
+.log-text {
+	font-size: $font-size-sm;
+	color: $app-text-primary;
+	word-break: break-all;
+}
+</style>

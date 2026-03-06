@@ -1,0 +1,143 @@
+<!-- 购买记录 -->
+<template>
+	<view>
+		<sort-time-filter :appid="appid" :itemName="itemName" :tags="tags" :isStatus="true" @ascTime="refresh($event,'asc')"
+			@keywords="refresh($event,'keywords')" @filterType="refresh($event,'type')"></sort-time-filter>
+		<u-skeleton :loading="isLoading" rows="10">
+			<list-refresh :dataList="list" :total="total" height="88" @refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item }">
+					<purchase-order-item :schemas="schemas" :item="item" :stickers="stickers"
+						:users="users"></purchase-order-item>
+				</template>
+			</list-refresh>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import SortTimeFilter from '@/components/layout/SortTimeFilter.nvue';
+	import PurchaseOrderItem from '@/components/shop/order-manage/PurchaseOrderItem.nvue';
+	import {
+		ShopBuyRecordApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		getRemainTime
+	} from '@/utils/dq/goods.js';
+
+	export default {
+		components: {
+			ListRefresh,
+			SortTimeFilter,
+			PurchaseOrderItem
+		},
+		data() {
+			return {
+				i18n: i18n,
+				appid: getGameType(),
+				list: [],
+				schemas: {},
+				users: {},
+				ascTime: false,
+				marketName: '',
+				tags: '',
+				itemName: '',
+				stickers: {},
+				pager: {
+					page: 1,
+					pageSize: 20
+				},
+				tags:{},
+				total: null,
+				isLoading: false,
+				startTime: undefined,
+				endTime: undefined,
+				statusList:undefined,
+			}
+		},
+		created() {
+			this.getBuyRecord();
+		},
+		mounted() {
+			uni.$on('receive-goods', () => {
+				this.refresh();
+			});
+		},
+		beforeDestroy() {
+			uni.$off('receive-goods');
+		},
+		methods: {
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async getBuyRecord() {
+				let params = {
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					statusList: this.statusList,
+					field: 'time',
+					keywords: this.marketName,
+					asc: this.asc,
+					startTime: this.startTime,
+					endTime: this.endTime,
+					tags:this.tags,
+				}
+				const res = await ShopBuyRecordApi(params);
+				if (res.code == 0 && res.datas.records.length > 0) {
+					this.list = this.list.concat(res.datas.records);
+					this.list.forEach(item => {
+						item.remainTime = getRemainTime(item.protection_time, item.id);
+					});
+					this.users = res.datas.users;
+					this.schemas = res.datas.schemas;
+					this.stickers = res.datas.stickers;
+					this.total = res.datas.pager.total;
+				}
+			},
+			refresh(e, type) {
+				uni.$u.debounce(async() => {
+					try {
+						this.isLoading = true;
+						this.startTime = undefined;
+						this.endTime = undefined;
+						if (type == 'asc') {
+							this.asc=e;
+						}
+						if (type == 'keywords') {
+							this.marketName = e;
+						}
+						if (type == 'type') {
+							this.tags = e.tags;
+							this.itemName = e.itemName;
+							this.startTime = e.startTime;
+							this.endTime = e.endTime;
+							 const allStatus = [-2,-1,1,2,3,4,5,6,9]; 
+							this.statusList = Array.isArray(e.statusList) && e.statusList.length
+							                          ? e.statusList
+							                          : allStatus;
+						}
+						this.list = [];
+						this.pager.page = 1;
+						await this.getBuyRecord();
+					} catch (e) {
+						console.log(e)
+					} finally {
+						this.isLoading = false;
+					}
+				}, 500);
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getBuyRecord();
+			},
+		}
+	}
+</script>

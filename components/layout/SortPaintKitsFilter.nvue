@@ -1,0 +1,793 @@
+<!-- 商品过滤 -->
+<template>
+	<view class="goods-container-filter" v-if="show">
+		<view class="filter-left" :style="{paddingTop:systemInfo.statusBarHeight + 'px'}">
+			<view class="back">
+				<u-icon class="icons" name="arrow-left" size="18" color="#000" @click="close()"></u-icon>
+				<text class="title">{{i18n.t('app.market.filter.text')}}</text>
+			</view>
+			<view class="top">
+				<text v-if="attr_mode" class="section">{{ i18n.t(attr_mode) }}</text>
+				<text @click="clearInput(attr_mode)" v-if="attr_mode.includes('wear')"
+					class="clear-btn">{{i18n.t('app.market.filter.clear')}}</text>
+			</view>
+			<scroll-view :scroll-y="true" class="filter-left-scroll"
+				:style="{height: systemInfo.windowHeight - 120 + 'px'}" :show-scrollbar="false">
+				<view class="attr-list" v-for="(genre,index) in attribute_list">
+					<text v-for="item in genre.list" :key="item.localized_name"
+						:class="[item.isCheck ? 'genre-item-active':'genre-item']"
+						v-if="genre.label == attr_mode && index != 'wear'"
+						@click="onCheck(item,genre.list)">{{genre.label.includes('wear')?i18n.t(item.localized_name):(item.phase?item.phase:item.name)}}</text>
+
+					<view v-if="attr_mode.includes('wear')&&genre.label.includes('wear')" class="container">
+						<view class="wear-selector">
+							<input v-model="wearMin" @blur="onWearBlur" class="wear-input" type="digit" inputmode="decimal"
+								@input="confirmWear(genre.list)" :placeholder="getWearMinPlaceholder()"></input>
+							<text class="span-symbol">-</text>
+							<input v-model="wearMax" @blur="onWearBlur" class="wear-input" type="digit" inputmode="decimal"
+								@input="confirmWear(genre.list)" :placeholder="getWearMaxPlaceholder()"></input>
+						</view>
+						<text class="title">{{i18n.t('app.market.filter.selection_quick')}}</text>
+					</view>
+					<view v-if="attr_mode.includes('wear')" class="attr-list">
+						<text v-for="item in genre.list" :key="item.localized_name"
+							:class="[item.isCheck ? 'genre-item-active':'genre-item']" v-if="genre.label == attr_mode"
+							@click="onCheck(item,genre.list)">{{genre.label.includes('wear')?i18n.t(item.localized_name):item.localized_name}}</text>
+					</view>
+				</view>
+			</scroll-view>
+		</view>
+		<view class="filter-right">
+			<text :style="{height:systemInfo.statusBarHeight + 'px'}" class="filter-line"></text>
+			<text v-for="title in rightTitle" :key="title.mode"
+				:class="[attr_mode == title.mode ? 'attr-text-active' : (title.label?'attr-text-check':'attr-text')]"
+				@click="attr_mode = title.mode">{{title.label?(((wearMin&&wearMax)||!['wearInterval'].includes(title.mode))?title.label:i18n.t(title.label)):i18n.t(title.mode)}}</text>
+			<text class="filter-line" :style="{height: systemInfo.windowHeight - 420  + 'px'}"></text>
+		</view>
+		<view class="operate-bottom">
+			<text class="operate-reset-btn" @click="filterReset()">{{i18n.t('app.market.filter.reset')}}</text>
+			<text class="operate-ok-btn" @click="filterOk()">{{i18n.t('app.market.filter.finish')}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+
+	export default {
+		props: {
+			show: {
+				type: Boolean,
+				default: false
+			},
+			appid: {
+				type: Number || String,
+				default: 730
+			},
+			schemaId: {
+				type: String,
+				default: ''
+			},
+			showPaintKits: {
+				type: Boolean,
+				default: false
+			},
+			paintKits: {
+				type: Array,
+				default: () => []
+			},
+			// 新增：外观类型属性
+			exteriorKey: {
+				type: String,
+				default: ''
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				attr_mode: 'app.market.csgo.phase',
+				attribute_list: {
+					phase: {}, // 款式
+					wear: {},
+				},
+				rightTitle: [{
+						label: '',
+						mode: 'app.market.csgo.phase' // 款式
+					},
+					{
+						label: '',
+						mode: 'app.market.filter.csgo.wear_interval' // 磨损区间
+					},
+				],
+				tags: {
+					phase: '', // 款式
+					wear: '', // 磨损区间
+					wearMin: '', // 最小磨损
+					wearMax: '', // 最大磨损
+				},
+				wearMin: '',
+				wearMax: '',
+				isClearAll: false,
+				systemInfo: {},
+			}
+		},
+		created() {
+			this.systemInfo = uni.getSystemInfoSync();
+			this.getGameFilter();
+			// 初始化磨损列表
+			this.updateWearListByExterior(this.exteriorKey);
+		},
+		watch: {
+			// 监听外观类型变化
+			exteriorKey: {
+				immediate: true,
+				handler(newVal) {
+					this.updateWearListByExterior(newVal);
+				}
+			},
+			/* ---------- wearMin ---------- */
+			  wearMin(val) {
+			    const minWear = Number(this.getWearMinPlaceholder().replace('≥', ''));
+			    const maxWear = this.getMaxWearValue();
+			    const num = Number(val);
+			
+			    /* 1. 明显越界立即拉回 */
+			    if (num < 0) {
+			      this.$nextTick(() => { this.wearMin = minWear.toFixed(2); });
+			      this.getWearTitle();
+			      return;
+			    }
+			    if (num > maxWear) {
+			      this.$nextTick(() => { this.wearMin = maxWear.toFixed(2); });
+			      this.getWearTitle();
+			      return;
+			    }
+			
+			  },
+			
+			  /* ---------- wearMax ---------- */
+			  wearMax(val) {
+			    const maxWear = this.getMaxWearValue();
+			    const num = Number(val);
+			
+			    /* 1. 明显越界立即拉回 */
+			    if (num > maxWear) {
+			      this.$nextTick(() => { this.wearMax = maxWear.toFixed(2); });
+			      this.getWearTitle();
+			      return;
+			    }
+			
+			  }
+			  },
+		methods: {
+			 normalizeWear() {
+			    const minWear = Number(this.getWearMinPlaceholder().replace('≥', ''));
+			    const maxWear = Number(this.getWearMaxPlaceholder().replace('≤', ''));
+			
+			    let min = this.wearMin === '' ? '' : Number(this.wearMin);
+			    let max = this.wearMax === '' ? '' : Number(this.wearMax);
+			
+			    /* 单端越界 */
+			    if (min !== '' && min < minWear) min = minWear;
+			    if (min !== '' && min > maxWear) min = maxWear;
+			    if (max !== '' && max < minWear) max = minWear;
+			    if (max !== '' && max > maxWear) max = maxWear;
+			
+			    /* 顺序倒挂 */
+			    if (min !== '' && max !== '' && min > max) max = min;
+			
+			    return {
+			      min: min === '' ? '' : min.toFixed(2),
+			      max: max === '' ? '' : max.toFixed(2)
+			    };
+			  },
+			
+			  /* 失焦：校准 + 写回 */
+			  onWearBlur() {
+			    const { min, max } = this.normalizeWear();
+			    this.wearMin = min;
+			    this.wearMax = max;
+			    this.getWearTitle();
+			  },
+			// 根据外观类型更新磨损列表
+			updateWearListByExterior(exteriorKey) {
+				const wearList = this.getExteriorWearList(exteriorKey);
+				
+				// 更新attribute_list中的wear列表
+				if (this.attribute_list.wear) {
+					this.attribute_list.wear.list = wearList;
+				}
+				
+			},
+			
+			// 根据外观获取磨损度区间列表（与SortWearFilter保持一致）
+			getExteriorWearList(exteriorKey) {
+				let wearList = [];
+				
+				if (exteriorKey === "WearCategory0") { // 崭新出厂
+					wearList = [
+						{ localized_name: '0.00-0.01', min: 0.00, max: 0.01 },
+						{ localized_name: '0.01-0.02', min: 0.01, max: 0.02 },
+						{ localized_name: '0.02-0.03', min: 0.02, max: 0.03 },
+						{ localized_name: '0.03-0.04', min: 0.03, max: 0.04 },
+						{ localized_name: '0.04-0.07', min: 0.04, max: 0.07 },
+					];
+				}
+				else if (exteriorKey === "WearCategory1") { // 略有磨损
+					wearList = [
+						{ localized_name: '0.07-0.08', min: 0.07, max: 0.08 },
+						{ localized_name: '0.08-0.09', min: 0.08, max: 0.09 },
+						{ localized_name: '0.09-0.10', min: 0.09, max: 0.10 },
+						{ localized_name: '0.10-0.11', min: 0.10, max: 0.11 },
+						{ localized_name: '0.11-0.15', min: 0.11, max: 0.15 },
+					];
+				}
+				else if (exteriorKey === "WearCategory2") { // 久经沙场
+					wearList = [
+						{ localized_name: '0.15-0.18', min: 0.15, max: 0.18 },
+						{ localized_name: '0.18-0.21', min: 0.18, max: 0.21 },
+						{ localized_name: '0.21-0.24', min: 0.21, max: 0.24 },
+						{ localized_name: '0.24-0.27', min: 0.24, max: 0.27 },
+						{ localized_name: '0.27-0.38', min: 0.27, max: 0.38 },
+					];
+				}
+				else if (exteriorKey === "WearCategory3") { // 破损不堪
+					wearList = [
+						{ localized_name: '0.38-0.39', min: 0.38, max: 0.39 },
+						{ localized_name: '0.39-0.40', min: 0.39, max: 0.40 },
+						{ localized_name: '0.40-0.41', min: 0.40, max: 0.41 },
+						{ localized_name: '0.41-0.42', min: 0.41, max: 0.42 },
+						{ localized_name: '0.42-0.45', min: 0.42, max: 0.45 },
+					];
+				}
+				else if (exteriorKey === "WearCategory4") { // 战痕累累
+					wearList = [
+						{ localized_name: '0.45-0.50', min: 0.45, max: 0.50 },
+						{ localized_name: '0.50-0.63', min: 0.50, max: 0.63 },
+						{ localized_name: '0.63-0.76', min: 0.63, max: 0.76 },
+						{ localized_name: '0.76-0.90', min: 0.76, max: 0.90 },
+						{ localized_name: '0.90-1.00', min: 0.90, max: 1.00 },
+					];
+				}
+				else {
+					// 如果exteriorKey无效，使用默认的崭新出厂区间（保持向后兼容）
+					wearList = [
+						{ localized_name: '0.00-0.01', min: 0.00, max: 0.01 },
+						{ localized_name: '0.01-0.02', min: 0.01, max: 0.02 },
+						{ localized_name: '0.02-0.03', min: 0.02, max: 0.03 },
+						{ localized_name: '0.03-0.04', min: 0.03, max: 0.04 },
+						{ localized_name: '0.04-0.07', min: 0.04, max: 0.07 },
+					];
+				}
+				
+				return wearList;
+			},
+			
+			// 获取当前外观的最大磨损值
+			getMaxWearValue() {
+				if (!this.exteriorKey) return 0.07;
+				
+				const wearList = this.getExteriorWearList(this.exteriorKey);
+				if (wearList.length > 0) {
+					return wearList[wearList.length - 1].max;
+				}
+				return 1.00;
+			},
+			
+			// 获取最小磨损placeholder
+			getWearMinPlaceholder() {
+				if (!this.exteriorKey) return "≥0";
+				
+				const wearList = this.getExteriorWearList(this.exteriorKey);
+				if (wearList.length > 0) {
+					return `≥${wearList[0].min}`;
+				}
+				return "≥0";
+			},
+
+			// 获取最大磨损placeholder
+			getWearMaxPlaceholder() {
+				if (!this.exteriorKey) return "≤0.07";
+				
+				const wearList = this.getExteriorWearList(this.exteriorKey);
+				if (wearList.length > 0) {
+					return `≤${wearList[wearList.length - 1].max}`;
+				}
+				return "≤1.00";
+			},
+			
+			getWearTitle() {
+				if (this.wearMin && this.wearMax && (Number(this.wearMin) >= 0) && (Number(this.wearMin) <= Number(this
+						.wearMax)) && (Number(this.wearMax) >= Number(this.wearMin)) && (Number(this.wearMax) <= this.getMaxWearValue())) {
+					this.rightTitle.forEach(i => {
+						if (i.mode == this.attr_mode) {
+							i.label = this.wearMin + ' - ' + this.wearMax;
+						}
+					});
+				} else {
+					this.rightTitle.forEach(i => {
+						if (i.mode == this.attr_mode) {
+							i.label = this.i18n.t(this.attr_mode);
+						}
+					});
+				}
+			},
+			confirmWear(list) {
+				if (this.wearMin || this.wearMax) {
+					for (let att of list) {
+						att.isCheck = false;
+					}
+					this.getWearTitle();
+				}
+			},
+			clearInput(mode) {
+				if (mode.includes('wear')) {
+					this.wearMin = '';
+					this.wearMax = '';
+					this.attribute_list['wear'].list.forEach((item) => {
+						if (item.isCheck) {
+							item.isCheck = false;
+						}
+					})
+				} else {
+					this.wearMin = '';
+					this.wearMax = '';
+				}
+				this.rightTitle.forEach(i => {
+					if (i.mode == this.attr_mode) {
+						i.label = '';
+					}
+				});
+				uni.removeStorageSync('esmarket_goods_rightTitle');
+			},
+			onCheck(item, list) {
+				for (let att of list) {
+					if (this.attr_mode.includes('wear')) {
+						if (att.localized_name == item.localized_name) {
+							att.isCheck = item.isCheck;
+						} else {
+							att.isCheck = false;
+						}
+					} else {
+						if (item.phase) {
+							if (att.phase == item.phase) {
+								att.isCheck = item.isCheck;
+							} else {
+								att.isCheck = false;
+							}
+						} else {
+							if (att.name == item.name) {
+								att.isCheck = item.isCheck;
+							} else {
+								att.isCheck = false;
+							}
+						}
+					}
+					att.mode = this.attr_mode;
+				}
+				item.isCheck = !item.isCheck;
+				if (item.isCheck) {
+					this.rightTitle.forEach(i => {
+						if (i.mode == item.mode) {
+							i.label = this.attr_mode.includes('wear') ? item.localized_name : (item.phase ? item
+								.phase : item.name);
+						}
+					})
+					if (item.mode.includes('wear')) {
+						this.wearMin = '';
+						this.wearMax = '';
+					}
+				} else {
+					this.rightTitle.forEach(i => {
+						if (i.mode == item.mode) {
+							i.label = '';
+						}
+					})
+				}
+			},
+			filterReset() {
+				// 款式
+				if (this.attribute_list) {
+					this.attribute_list['phase'].list.forEach((item) => {
+						if (item.isCheck) {
+							item.isCheck = false;
+						}
+					})
+					// 磨损
+					this.attribute_list['wear'].list.forEach((item) => {
+						if (item.isCheck) {
+							item.isCheck = false;
+						}
+					})
+				}
+				if (this.rightTitle && this.rightTitle.length > 0) {
+					this.rightTitle.forEach(i => {
+						i.label = '';
+					})
+				}
+				this.itemName = '';
+				this.itemLabel = '';
+				this.tags.type = '';
+				this.clearInput('all');
+				this.isClearAll = true;
+				if (this.appid == 730) {
+					this.removeCSGOStorage();
+				}
+				setTimeout(() => {
+					this.isClearAll = false;
+				}, 300);
+			},
+			filterOk() {
+				/* 校准 */
+				  const { min, max } = this.normalizeWear();
+				  this.wearMin = min;
+				  this.wearMax = max;
+				// 款式
+				if (this.attribute_list['phase']) {
+					this.attribute_list['phase'].list.forEach((phase) => {
+						if (phase.isCheck) {
+							this.tags.phase = phase.phase && phase.phase.length > 0 ? phase.phase : phase.name;
+							this.tags.phaseId = phase.id.length > 0 ? phase.id : null;
+						}
+					})
+				}
+
+				// 磨损
+				if (this.attribute_list['wear']) {
+					this.attribute_list['wear'].list.forEach((item) => {
+						if (item.isCheck) {
+							this.tags.wear = item.localized_name;
+							this.tags.wearMin = Number(item.localized_name.split('-')[0]);
+							this.tags.wearMax = Number(item.localized_name.split('-')[1]);
+						}
+						if (this.wearMin && this.wearMax) {
+							this.tags.wearMin = this.wearMin;
+							this.tags.wearMax = this.wearMax;
+							this.tags.wear = undefined;
+						}
+					})
+				}
+
+				this.$emit('submit', this.tags);
+				this.close();
+				// // 用户点击完成，才将筛选内容进行保存
+				if (this.appid == 730) {
+					this.setCSGOStorage();
+				}
+				this.$forceUpdate();
+			},
+			setCSGOStorage() {
+				uni.setStorageSync('esmarket_goods_itemName', this.itemName);
+				uni.setStorageSync('esmarket_goods_rightTitle', this.rightTitle);
+				uni.setStorageSync('esmarket_goods_attribute', encodeURIComponent(JSON.stringify(this.attribute_list)));
+			},
+			removeCSGOStorage() {
+				uni.removeStorageSync('esmarket_goods_attribute');
+				uni.removeStorageSync('esmarket_goods_rightTitle');
+				uni.removeStorageSync('esmarket_goods_itemName');
+			},
+			getGameFilter() {
+				if (this.appid == 730) {
+					this.getTypeList();
+				}
+			},
+			getTypeList() {
+				if (this.appid != 730) {
+					return;
+				}
+				let titleList = uni.getStorageSync('esmarket_goods_rightTitle');
+				if (titleList.length > 0 && titleList[0].schemaId == this.schemaId) {
+					this.rightTitle = titleList;
+				} else {
+					if (this.showPaintKits&&this.paintKits && this.paintKits.length > 0) {
+						this.rightTitle = [{
+								label: '',
+								mode: 'app.market.csgo.phase', // 款式
+								schemaId: this.schemaId
+							},
+							{
+								label: '',
+								mode: 'app.market.filter.csgo.wear_interval', // 磨损区间
+							},
+						];
+					} else {
+						this.rightTitle = [{
+							label: '',
+							mode: 'app.market.filter.csgo.wear_interval', // 磨损区间
+						}];
+						this.attr_mode = 'app.market.filter.csgo.wear_interval';
+					}
+
+				}
+				// schemaId不变，先取缓存
+				// TTDO:这里要考虑多语言
+				let attrList = uni.getStorageSync('esmarket_goods_attribute');
+				if (attrList && titleList.length > 0 && titleList[0].schemaId == this.schemaId) {
+					this.attribute_list = JSON.parse(decodeURIComponent(attrList));
+				} else {
+					this.attribute_list.phase = {
+						label: "app.market.csgo.phase",
+						list: this.paintKits
+					};
+					
+					// 使用动态生成的磨损区间，而不是硬编码的
+					this.attribute_list.wear = {
+						label: "app.market.filter.csgo.wear_interval",
+						list: this.getExteriorWearList(this.exteriorKey) // 动态生成
+					};
+					
+					uni.setStorageSync('esmarket_goods_attribute', encodeURIComponent(JSON.stringify(this
+						.attribute_list)));
+				}
+			},
+			close() {
+				this.$emit('close');
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../theme.scss";
+	.back {
+		width: 500rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 10rpx 0 20rpx;
+		position: relative;
+
+		.icons {
+			position: absolute;
+			left: 10rpx;
+			top: 6rpx;
+		}
+
+		.title {
+			font-size: $font-size-md;
+			color: $app-background-black;
+		}
+	}
+
+	.top {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding-left: 10rpx;
+
+		.section {
+			padding-left: 10rpx;
+			border-left: 3px solid $app-link;
+			font-size: $font-size-md;
+		}
+
+		.clear-btn {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			text-align: center;
+			padding: 4rpx 20rpx;
+			margin-left: 10rpx;
+			border-radius: 10rpx;
+			border: 1rpx solid $app-divider;
+		}
+	}
+
+	.container {
+		padding: 20rpx;
+
+		.paint-input {
+			border-radius: 3rpx;
+			padding-left: 20rpx;
+			font-size: $font-size-sm;
+			background: $app-surface-elevated;
+		}
+
+		.title {
+			font-weight: bold;
+			font-size: $font-size-md;
+			margin: 40rpx 0 20rpx 0;
+		}
+	}
+
+	.attr-list {
+		width: 500rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding-top: 10rpx;
+
+		.item-type {
+			width: 500rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-link;
+			margin: 10rpx;
+			font-size: $font-size-md;
+			padding: 0 10rpx;
+		}
+
+		.genre-item-active {
+			width: 230rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			text-align: center;
+			margin: 10rpx;
+			font-size: $font-size-md;
+			background-color: #b38f55;
+			border-radius: 2rpx;
+			padding: 0 10rpx;
+		}
+
+		.genre-item {
+			width: 230rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			text-align: center;
+			margin: 10rpx;
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			border: 1rpx solid $app-surface-elevated;
+			border-radius: 2rpx;
+			padding: 0 10rpx;
+		}
+	}
+
+	.wear-selector {
+		display: flex;
+		flex-direction: row;
+
+		.span-symbol {
+			margin: 0 30rpx;
+		}
+
+		.wear-input {
+			width: 200rpx;
+			font-size: $font-size-md;
+			background: $app-surface-elevated;
+			border-radius: 3rpx;
+			text-align: center;
+		}
+	}
+
+	.goods-container-filter {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+	}
+
+	.filter-left {
+		width: 500rpx;
+
+		.filter-left-scroll {
+			width: 500rpx;
+		}
+	}
+
+	.attr-list {
+		width: 500rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+
+		.item-type {
+			width: 500rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-link;
+			margin: 10rpx;
+			font-size: $font-size-sm;
+			padding: 0 10rpx;
+		}
+
+		.genre-item-active {
+			width: 220rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			text-align: center;
+			margin: 10rpx;
+			font-size: $font-size-sm;
+			background-color: #b38f55;
+			border-radius: 2rpx;
+			padding: 0 10rpx;
+		}
+
+		.genre-item {
+			width: 220rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-text-primary;
+			text-align: center;
+			margin: 10rpx;
+			font-size: $font-size-sm;
+			border: 2rpx solid $app-divider;
+			border-radius: 2rpx;
+			padding: 0 10rpx;
+		}
+	}
+
+	.filter-right {
+		width: 180rpx;
+		background: $app-surface;
+
+		.attr-text {
+			width: 180rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			padding-right: 10rpx;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text-active {
+			width: 180rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sm;
+			color: $app-link;
+			background: $app-background;
+			padding-right: 10rpx;
+			border-top: 1rpx solid $app-surface-elevated;
+			border-bottom: 1rpx solid $app-surface-elevated;
+			border-left: 1rpx solid $app-background;
+		}
+
+		.attr-text-check {
+			width: 180rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sm;
+			color: $app-link;
+			padding-right: 10rpx;
+			border-left: 1rpx solid $app-background;
+		}
+	}
+
+	.filter-line {
+		width: 180rpx;
+		border-left: 1rpx solid $app-surface-elevated;
+	}
+
+	.operate-bottom {
+		width: 680rpx;
+		height: 100rpx;
+		display: flex;
+		flex-direction: row;
+		position: fixed;
+		bottom: 0;
+		right: 0;
+		z-index: 999;
+		background-color: $app-background;
+		border-top: 1rpx solid $app-divider;
+
+		.operate-reset-btn {
+			width: 225rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: $app-text-primary;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+
+		.operate-ok-btn {
+			width: 225rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: $app-link;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+	}
+</style>

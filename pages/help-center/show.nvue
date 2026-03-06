@@ -1,0 +1,119 @@
+<template>
+	<view>
+		<u-navbar :title="item.title" :titleStyle="getTitleStyle()" :autoBack="true" placeholder></u-navbar>
+		<view class="container" v-if="item">
+			<view class="create-info">
+				<view class="item" v-if="item.author">
+					<text class="label">{{i18n.t('app.system.notice.author')}}:</text>
+					<text class="text">{{item.author}}</text>
+				</view>
+				<view class="item" v-if="item.time">
+					<text class="label">{{i18n.t('app.system.notice.publish_time')}}:</text>
+					<text class="text">{{item.time}}</text>
+				</view>
+			</view>
+			<view class="context">
+				<mp-html :content="getMessage(item.context)" />
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		GetHelpItemApi
+	} from '@/api/modules/help.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				id: null,
+				item: {},
+			}
+		},
+		onLoad(options) {
+			if (options.item) {
+				let category = JSON.parse(decodeURIComponent(options.item));
+				console.log(category);
+				if (!category) {
+					return;
+				}
+				this.item = category;
+				this.item.time = uni.$u.timeFormat(category.time * 1000, 'yyyy-mm-dd hh:MM:ss');
+			}
+		},
+		methods: {
+			getTitleStyle() {
+				if (this.item.title && this.item.title.length > 11) {
+					return {
+						fontSize: '27rpx'
+					}
+				}
+			},
+			getMessage(text){
+				if (text) {
+					const entityMap = {
+						'&nbsp;': ' ', // 空格
+						'&lt;': '<', // 小于号
+						'&gt;': '>', // 大于号
+						'&amp;': '&', // &符号
+						'&quot;': '"', // 双引号
+						'&ldquo;': '“', // 左双引号
+						'&rdquo;': '”', // 右双引号
+						'&#39;': "'", // 单引号
+						'&apos;': "'", // 单引号（兼容写法）
+						'&ensp;': ' ', // 半角空格
+						'&emsp;': '  ', // 全角空格
+					};
+					// 替换命名实体（如 &nbsp;）
+					text = text.replace(/&([a-z]+);/gi, (match, entity) => {
+						return entityMap[match.toLowerCase()] || match;
+					});
+					// 替换十进制实体（如 &#160;）
+					text = text.replace(/&#(\d+);/g, (match, dec) => {
+						return String.fromCharCode(dec);
+					});
+					// 替换十六进制实体（如 &#xA0;）
+					text = text.replace(/&#x([\da-fA-F]+);/g, (match, hex) => {
+						return String.fromCharCode(parseInt(hex, 16));
+					});
+					return text.trim();
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.create-info {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		padding: 20rpx;
+
+		.item {
+			display: flex;
+			flex-direction: row;
+			margin-right: 30rpx;
+
+			.label {
+				color: $app-text-secondary;
+				font-size: $font-size-sm;
+			}
+
+			.text {
+				color: $app-text-secondary;
+				font-size: $font-size-sm;
+				margin-left: 6rpx;
+			}
+		}
+	}
+
+	.context {
+		width: 750rpx;
+		padding: 0rpx 20rpx;
+	}
+</style>

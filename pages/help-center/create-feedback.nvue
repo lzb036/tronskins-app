@@ -1,0 +1,312 @@
+<template>
+	<view>
+		<u-navbar :title="titleNavbar" :autoBack="true" placeholder></u-navbar>
+
+		<view class="feed-container">
+			<!-- 补充反馈模式 -->
+			<template v-if="feedType === 'addFeedback'">
+				<text class="feed-title">{{i18n.t('app.user.feedback.content')}}</text>
+				<textarea class="feed-textarea" type="textarea" v-model="context"
+					:placeholder="i18n.t('app.user.feedback.problem_placeholder')" />
+				<text class="feed-title">{{i18n.t('app.user.feedback.screenshots')}}</text>
+				<view class="feed-upload-list">
+					<view class="feed-upload-item" v-for="(img,index) in imageList" :key="'add-' + index">
+						<image class="feed-image" :src="img" mode="aspectFill"></image>
+						<view class="del-btn" @click.stop="delImage(index)">
+							<u-icon name="close-circle-fill" color="#ff4757" size="22"></u-icon>
+						</view>
+					</view>
+					<view v-if="imageList.length < 1" class="feed-upload-item" @click="uploadImage()">
+						<u-icon name="plus" class="feed-icon" size="50" color="#f4f4f4"></u-icon>
+					</view>
+				</view>
+			</template>
+
+			<!-- 创建反馈模式 -->
+			<template v-else>
+				<text class="feed-title">{{i18n.t('app.user.feedback.title')}}</text>
+				<input class="feed-input" type="text" v-model="title"
+					:placeholder="i18n.t('app.user.feedback.title_placeholder')">
+				<text class="feed-title">{{i18n.t('app.user.feedback.content')}}</text>
+				<textarea class="feed-textarea" type="textarea" v-model="context"
+					:placeholder="i18n.t('app.user.feedback.problem_placeholder')" />
+				<text class="feed-title">{{i18n.t('app.user.feedback.screenshots')}}</text>
+				<view class="feed-upload-list">
+					<view class="feed-upload-item" v-for="(img,index) in imageList" :key="'create-' + index">
+						<!-- 图片区域添加预览事件 -->
+						<view class="image-wrapper" @click.stop="previewImage(index)">
+							<image class="feed-image" :src="img" mode="aspectFill" />
+						</view>
+						<!-- 删除按钮独立 -->
+						<view class="del-btn" @click.stop="delImage(index)">
+							<u-icon name="close-circle-fill" color="#ff4757" size="22"></u-icon>
+						</view>
+					</view>
+					<!-- 上传按钮：两种模式共用，直接禁用并置灰 -->
+					<view v-if="imageList.length < 1" class="feed-upload-item" :style="{ opacity: uploading ? 0.5 : 1 }"
+						@click="uploadImage">
+						<u-icon name="plus" class="feed-icon" size="50" color="#f4f4f4"></u-icon>
+					</view>
+				</view>
+			</template>
+		</view>
+
+		<view class="feed-btn-wrap">
+			<text class="feed-submit-btn" @click="feedSubmit()">{{i18n.t('app.user.feedback.submit')}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import {
+		upload
+	} from '@/utils/http';
+	import {
+		UploadFeedbackImgApi,
+		SubmitFeedbackApi,
+		AddFeedbackSubmitApi
+	} from "@/api/modules/notify.js";
+	import {
+		getUserToken,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		getLanguage,
+		getWEBIDCookie,
+		getServerCookie
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				id: '',
+				feedType: "", // createFeedback创建反馈   addFeedback补充反馈
+				titleNavbar: '',
+				email: "",
+				title: "",
+				context: "",
+				imagePth: '',
+				imageList: [],
+				imageIds: [],
+				uploading: false,
+			}
+		},
+		onLoad(options) {
+			if (options.type) {
+				this.feedType = options.type;
+			}
+			if (options.id) {
+				this.id = options.id;
+			}
+			this.titleNavbar = this.feedType === 'addFeedback' ? i18n.t('app.user.feedback.additional') : i18n.t(
+				'app.user.feedback.problem')
+		},
+		created() {},
+		methods: {
+			previewImage(current) {
+				uni.previewImage({
+					urls: this.imageList, // 所有要预览的图片
+					current: this.imageList[current], // 当前点的那一张
+					indicator: 'number'
+				});
+			},
+
+			delImage(idx) {
+				if (!this.imageList || idx >= this.imageList.length || idx < 0) return;
+				try {
+					this.imageList.splice(idx, 1);
+					this.imageIds.splice(idx, 1);
+					uni.$u.toast(this.i18n.t('app.system.message.success'));
+				} catch (e) {
+					console.error("Error while deleting image: ", e);
+					uni.$u.toast(this.i18n.t('app.user.feedback.message.error'));
+				}
+			},
+			feedSubmit() {
+				if (!this.context) {
+					uni.$u.toast(i18n.t('app.user.feedback.message.fill_feedback'));
+					return;
+				}
+				if (this.feedType == 'addFeedback') {
+					this.addFeedback();
+				} else {
+					if (!this.title) {
+						uni.$u.toast(i18n.t('app.user.feedback.message.fill_feedback'));
+						return;
+					}
+					this.createFeedback();
+				}
+			},
+			async addFeedback() {
+				try {
+					const res = await AddFeedbackSubmitApi({
+						ticketId: this.id,
+						context: this.context,
+						ids: this.imageIds
+					});
+					if (res.code == 0) {
+						uni.navigateBack();
+						uni.$emit('feedback-success');
+						uni.$u.toast(res.datas);
+					} else {
+						uni.$u.toast(res.datas);
+					}
+				} catch (err) {
+					uni.$u.toast(err.datas);
+				}
+			},
+			async createFeedback() {
+				try {
+					const res = await SubmitFeedbackApi({
+						email: this.email,
+						title: this.title,
+						context: this.context,
+						ids: this.imageIds
+					});
+					if (res.code == 0) {
+						uni.$emit('feedback-success');
+						uni.navigateBack();
+						uni.$u.toast(this.i18n.t('app.user.feedback.message.submit_success'));
+					} else {
+						uni.$u.toast(res.datas);
+					}
+				} catch (err) {
+					uni.$u.toast(err.data.datas);
+				}
+			},
+			uploadImage() {
+			      if (this.uploading) return;          // 重复点击拦截
+			      this.uploading = true;
+			      uni.showLoading({ title: '上传中...', mask: true });
+			
+			      uni.chooseImage({
+			        count: 1,
+			        sizeType: ['original', 'compressed'],
+			        sourceType: ['album'],
+			        success: async (res) => {
+			          try {
+			            const url = this.feedType === 'addFeedback'
+			                      ? 'api/app/ticket/reply/upload'
+			                      : 'api/app/ticket/upload';
+			            const uploadRes = await upload(url, res.tempFilePaths[0]);
+			
+			            if (uploadRes.statusCode === 200) {
+			              this.imageList.push(res.tempFilePaths[0]);
+			              this.imageIds.push(uploadRes.datas);
+			              uni.$u.toast(i18n.t('app.user.feedback.message.image_upload_success'));
+			            } else {
+			              uni.$u.toast(i18n.t('app.user.feedback.message.image_upload_failed'));
+			            }
+			          } catch (e) {
+			            uni.$u.toast(i18n.t('app.user.feedback.message.image_upload_failed'));
+			          } finally {
+			            this.uploading = false;
+			            uni.hideLoading();
+			          }
+			        },
+			        fail: () => {
+			          // 用户取消选择也要关 loading
+			          this.uploading = false;
+			          uni.hideLoading();
+			        }
+			      });
+			    }
+			  }
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.del-btn {
+		position: absolute;
+		top: -8rpx;
+		right: -8rpx;
+		width: 36rpx;
+		height: 36rpx;
+		background: #fff;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.feed-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		padding: 30rpx 35rpx;
+
+		.feed-input {
+			width: 680rpx;
+			height: 80rpx;
+			font-size: $font-size-md;
+			margin-bottom: 40rpx;
+			padding: 20rpx 10rpx;
+			border: 1rpx solid $app-surface;
+			color: $app-text-primary;
+		}
+
+		.feed-textarea {
+			width: 680rpx;
+			height: 180rpx;
+			font-size: $font-size-md;
+			margin-bottom: 40rpx;
+			padding: 20rpx 10rpx;
+			border: 1rpx solid $app-surface;
+			color: $app-text-primary;
+		}
+
+		.feed-title {
+			color: $app-text-secondary;
+			font-size: $font-size-lg;
+			text-align: left;
+			margin-bottom: 20rpx;
+		}
+	}
+
+	.feed-upload-list {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.feed-upload-item {
+		width: 150rpx;
+		height: 150rpx;
+		margin: 5rpx;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		border: 3rpx dashed $app-surface;
+
+
+		.feed-image {
+			width: 150rpx;
+			height: 150rpx;
+		}
+	}
+
+	.feed-btn-wrap {
+		width: 750rpx;
+		height: 40px;
+		position: fixed;
+		left: 0rpx;
+		bottom: 0rpx;
+		background-color: $app-background;
+		border-top: 1rpx solid $app-surface;
+
+		.feed-submit-btn {
+			width: 750rpx;
+			height: 40px;
+			line-height: 40px;
+			color: $app-background;
+			text-align: center;
+			border-radius: 5rpx;
+			background-color: $app-link;
+		}
+	}
+</style>

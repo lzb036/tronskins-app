@@ -1,0 +1,235 @@
+<!-- 成交记录组件 -->
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<list-refresh :height="244" :total="total" :dataList="list" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<view class="sale-item">
+					<view @click="routeItem(item)">
+						<PhaseItem :item="item" :schema="schemas[item.market_hash_name]" :width="156"></PhaseItem>
+					</view>
+					<view class="sale-center">
+						<view class="sale-price">
+							<text class="price-label">{{currencySymbol}}</text>
+							<text class="price-value">{{item.price}}</text>
+						</view>
+						<view class="sale-shop" v-if="users&&users[item.userId]" @click="routeShop(item)">
+							<image class="user-img" v-if="item.userId" :src="getImageLocal(users[item.userId].avatar)"
+								mode=""></image>
+							<text class="user-name" v-if="item.userId">{{users[item.userId].nickname}}</text>
+						</view>
+					</view>
+					<view class="sale-right">
+						<text class="sale-type">{{ item.typeName }}</text>
+						<text class="sale-time">{{ createTime(item) }}</text>
+					</view>
+				</view>
+			</template>
+		</list-refresh>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import config from '@/config/index.js';
+	import BaseItem from '@/components/game-item/index.nvue';
+	import PhaseItem from '@/components/game-item/PhaseItem.nvue';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import { getGameFile } from '@/utils/order/productUtils.js'
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		GameItemTransactionListApi
+	} from '@/api/modules/market.js';
+
+	export default {
+		props: ['schema_id', 'appid'],
+		components: {
+			ListRefresh,
+			BaseItem,
+			PhaseItem
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				list: [],
+				schemas: {},
+				users: {},
+				pager: {
+					page: 1,
+					pageSize: 10,
+					total: 0,
+				},
+				total: null,
+				isLoading: false,
+			}
+		},
+		mounted() {
+			this.queryList();
+		},
+		watch: {
+			schema_id(val, oldVal) {
+				if (val != oldVal) {
+					this.refresh();
+				}
+			}
+		},
+		methods: {
+			async queryList() {
+				let params = {
+					appId: this.appid,
+					schemaId: this.schema_id,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize
+				}
+				const res = await GameItemTransactionListApi(params);
+				if (res.code == 0) {
+					this.users = res.datas.users;
+					this.schemas = res.datas.schemas;
+					this.list = res.datas.details;
+					this.total = res.datas.pager ? res.datas.pager.total : null;
+				}
+			},
+			getImageLocal(avatar) {
+				let imagePath = 'https://www.tronskins.com/fms/image';
+				if (!avatar || typeof avatar !== 'string') {
+					return '/static/image/user/none.png';
+				}
+				return avatar.startsWith("http") ? avatar : imagePath + avatar;
+			},
+			createTime(item) {
+				return uni.$u.timeFormat(item.create_time, 'yyyy-mm-dd hh:MM:ss')
+			},
+			routeItem(item) {
+				if(this.item.app_id){
+					let params = {
+						schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+						asset: encodeURIComponent(JSON.stringify(this.item)),
+						user: encodeURIComponent(JSON.stringify(this.users))
+					}
+					uni.$u.route(`/pages/product-market/${getGameFile(this.item.app_id)}/product-detail`,params);
+				}
+			},
+			async refresh() {
+				try {
+					this.isLoading = true;
+					this.list = [];
+					this.pager.page = 1;
+					await this.queryList();
+				} catch (e) {
+					console.log(e)
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.queryList();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.no-data {
+		width: 750rpx;
+		padding: 300rpx 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+
+		.no-data-text {
+			color: $app-text-thirdly;
+		}
+
+		.no-login {
+			color: $app-link;
+		}
+	}
+
+	.sale-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+	}
+
+	.sale-center {
+		width: 314rpx;
+		display: flex;
+		flex-direction: column;
+		padding-left: 20rpx;
+	}
+
+	.sale-right {
+		width: 240rpx;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: flex-end;
+		.sale-type {
+			font-size: $font-size-md;
+			color: $app-text-secondary;
+			text-align: right;
+		}
+
+		.sale-time {
+			font-size: $font-size-xs;
+			color: $app-text-thirdly;
+			margin-top: 10rpx;
+			text-align: right;
+		}
+	}
+
+	.sale-price {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 5rpx;
+
+		.price-label {
+			font-size: $font-size-sm;
+			color: $app-text-price;
+			margin-right: 6rpx;
+			font-weight: bold;
+		}
+
+		.price-value {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			font-weight: 300;
+			margin-right: 10rpx;
+			font-weight: bold;
+		}
+	}
+
+	.sale-shop {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+
+		.user-img {
+			width: 36rpx;
+			height: 36rpx;
+			border-radius: 50rpx;
+		}
+
+		.user-name {
+			font-size: $font-size-sm;
+			height: 30rpx;
+			text-align: left;
+			color: $app-text-primary;
+			padding-top: 3rpx;
+			padding-left: 10rpx;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+	}
+</style>

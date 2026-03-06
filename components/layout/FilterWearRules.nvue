@@ -1,0 +1,630 @@
+<!-- 商品过滤 -->
+<template>
+	<view class="goods-container-filter">
+		<view class="filter-left">
+			<scroll-view :scroll-y="true" class="filter-left-scroll"
+				:style="{height: getSystemInfo().windowHeight - 50 + 'px',paddingTop:getSystemInfo().statusBarHeight + 'px'}"
+				:show-scrollbar="false">
+				<view class="filter-left-wear" v-if="mode=='paintKits'">
+					<text class="filter-left-name">{{i18n.t('app.market.filter.selection_phase')}}</text>
+					<view v-for="item in paintKits" :key="item.id">
+						<text @click="paintKitsChange(item)"
+							:class="[phaseActive == item.id ? 'wear-item-active':'wear-item']">{{item.phase?item.phase:item.name}}</text>
+					</view>
+				</view>
+				<view class="filter-left-wear" v-if="mode=='percentage'">
+					<text class="filter-left-name">{{i18n.t('app.market.csgo.gradient_range')}}</text>
+					<view v-for="item in percentageList" :key="item.id">
+						<text @click="percentageChange(item)"
+							:class="[percentageActive == item.label ? 'wear-item-active':'wear-item']">{{item.label}}</text>
+					</view>
+				</view>
+				<view v-if="mode == 'template'">
+					<text class="filter-left-name">{{i18n.t('app.market.csgo.paint_index')}}</text>
+					<input v-model="templateNumber" type="number" class="filter-left-input"
+						:placeholder="i18n.t('app.market.csgo.paint_index_placeholder')"></input>
+				</view>
+				<view class="filter-left-wear" v-if="mode == 'wear'">
+					<text class="filter-left-name">{{i18n.t('app.market.filter.csgo.wear_interval')}}</text>
+					<view class="wear-ran">
+						<input v-model="wearMin" @input="wearInput()" type="digit" class="wear-ran-input"></input>
+						<text class="wear-ran-text">~</text>
+						<input v-model="wearMax" @input="wearInput()" type="digit" class="wear-ran-input"></input>
+					</view>
+					<text class="filter-left-name">{{i18n.t('app.market.filter.selection_quick')}}</text>
+					<view v-for="(item,idx) in wearList" :key="idx">
+						<text @click="wearChange(item)"
+							:class="[wearActive == item.localized_name ? 'wear-item-active':'wear-item']">{{item.localized_name}}</text>
+					</view>
+				</view>
+				<view class="filter-left-wear" v-if="mode == 'price'">
+					<text class="filter-left-name">{{i18n.t('app.market.filter.price_range')}}</text>
+					<view class="wear-ran">
+						<input v-model="priceMin" type="digit" @input="updateTitleList()"
+							class="wear-ran-input"></input>
+						<text class="wear-ran-text">~</text>
+						<input v-model="priceMax" type="digit" @input="updateTitleList()"
+							class="wear-ran-input"></input>
+					</view>
+				</view>
+			</scroll-view>
+		</view>
+		<view class="filter-right">
+			<text class="filter-line" :style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}"></text>
+			<view class="attr-list" v-for="(typ,index) in titleList" :key="typ.label" @click="changeType(typ)">
+				<text :class="mode == typ.mode ? 'attr-text-active':'attr-text'">{{i18n.t(typ.label)}}</text>
+			</view>
+		</view>
+		<view class="operate-bottom">
+			<text class="operate-reset-btn" @click="filterReset()">{{i18n.t('app.market.filter.reset')}}</text>
+			<text class="operate-ok-btn" @click="filterOk()">{{i18n.t('app.market.filter.finish')}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		marketAttributeListApi
+	} from "@/api/modules/market.js";
+	export default {
+		props: {
+			showWear: {
+				type: Boolean,
+				default: false
+			},
+			showPaintKits: {
+				type: Boolean,
+				default: false
+			},
+			paintKits: {
+				type: Array,
+				default: () => []
+			},
+			percentageList: {
+				type: Array,
+				default: () => []
+			},
+			exteriorKey: {
+				type: String,
+				default: ''
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				mode: 'template',
+				titleList: [],
+				wearList: [],
+				wearActive: '',
+				templateNumber: '',
+				wearMin: '',
+				wearMax: '',
+				priceMin: '',
+				priceMax: '',
+				phaseActive: undefined,
+				paintIndex: undefined,
+				percentageActive: undefined,
+				percentageMin: undefined,
+				percentageMax: undefined,
+			}
+		},
+		mounted() {
+			this.init();
+		},
+		watch: {
+			exteriorKey: {
+				immediate: true,
+				handler(newKey) {
+					this.wearList = this.getWearQuickList(newKey);
+					this.wearActive = '';
+					this.wearMin = '';
+					this.wearMax = '';
+				}
+			}
+		},
+		methods: {
+			getWearQuickList(exteriorKey) {
+				const map = {
+					WearCategory0: [ // 崭新
+						{
+							localized_name: '0.00-0.01',
+							min: 0.00,
+							max: 0.01
+						},
+						{
+							localized_name: '0.01-0.02',
+							min: 0.01,
+							max: 0.02
+						},
+						{
+							localized_name: '0.02-0.03',
+							min: 0.02,
+							max: 0.03
+						},
+						{
+							localized_name: '0.03-0.04',
+							min: 0.03,
+							max: 0.04
+						},
+						{
+							localized_name: '0.04-0.07',
+							min: 0.04,
+							max: 0.07
+						},
+					],
+					WearCategory1: [ // 略磨
+						{
+							localized_name: '0.07-0.08',
+							min: 0.07,
+							max: 0.08
+						},
+						{
+							localized_name: '0.08-0.09',
+							min: 0.08,
+							max: 0.09
+						},
+						{
+							localized_name: '0.09-0.10',
+							min: 0.09,
+							max: 0.10
+						},
+						{
+							localized_name: '0.10-0.11',
+							min: 0.10,
+							max: 0.11
+						},
+						{
+							localized_name: '0.11-0.15',
+							min: 0.11,
+							max: 0.15
+						},
+					],
+					WearCategory2: [ // 久经
+						{
+							localized_name: '0.15-0.18',
+							min: 0.15,
+							max: 0.18
+						},
+						{
+							localized_name: '0.18-0.21',
+							min: 0.18,
+							max: 0.21
+						},
+						{
+							localized_name: '0.21-0.24',
+							min: 0.21,
+							max: 0.24
+						},
+						{
+							localized_name: '0.24-0.27',
+							min: 0.24,
+							max: 0.27
+						},
+						{
+							localized_name: '0.27-0.38',
+							min: 0.27,
+							max: 0.38
+						},
+					],
+					WearCategory3: [ // 破损
+						{
+							localized_name: '0.38-0.39',
+							min: 0.38,
+							max: 0.39
+						},
+						{
+							localized_name: '0.39-0.40',
+							min: 0.39,
+							max: 0.40
+						},
+						{
+							localized_name: '0.40-0.41',
+							min: 0.40,
+							max: 0.41
+						},
+						{
+							localized_name: '0.41-0.42',
+							min: 0.41,
+							max: 0.42
+						},
+						{
+							localized_name: '0.42-0.45',
+							min: 0.42,
+							max: 0.45
+						},
+					],
+					WearCategory4: [ // 战痕
+						{
+							localized_name: '0.45-0.50',
+							min: 0.45,
+							max: 0.50
+						},
+						{
+							localized_name: '0.50-0.63',
+							min: 0.50,
+							max: 0.63
+						},
+						{
+							localized_name: '0.63-0.76',
+							min: 0.63,
+							max: 0.76
+						},
+						{
+							localized_name: '0.76-0.90',
+							min: 0.76,
+							max: 0.90
+						},
+						{
+							localized_name: '0.90-1.00',
+							min: 0.90,
+							max: 1.00
+						},
+					],
+				};
+				return map[exteriorKey]
+			},
+			init() {
+				this.getTitleList();
+				if (this.percentageList && this.percentageList.length > 0) {
+					this.mode = 'percentage';
+					this.titleList.unshift({
+						label: this.i18n.t('app.market.csgo.gradient_range'),
+						mode: 'percentage'
+					});
+				}
+				if (this.showPaintKits && this.paintKits && this.paintKits.length > 0) {
+					this.mode = 'paintKits';
+					this.titleList.unshift({
+						label: this.i18n.t('app.market.filter.selection_phase'),
+						mode: 'paintKits'
+					});
+				}
+			},
+			getTitleList() {
+				let list = [{
+						label: this.i18n.t('app.market.csgo.paint_index'),
+						mode: 'template'
+					},
+					{
+						label: this.i18n.t('app.market.filter.csgo.wear_interval'),
+						mode: 'wear'
+					},
+					{
+						label: this.i18n.t('app.market.filter.price_range'),
+						mode: 'price'
+					}
+				];
+				if (!this.showWear) {
+					list = list.filter(item => item.mode !== 'wear');
+				}
+				this.titleList = list;
+			},
+			filterReset() {
+			    // 1. 清空已选值
+			    this.wearActive        = '';
+			    this.templateNumber    = '';
+			    this.wearMin           = '';
+			    this.wearMax           = '';
+			    this.priceMin          = '';
+			    this.priceMax          = '';
+			    this.phaseActive       = '';
+			    this.paintIndex        = '';
+			    this.percentageMin     = '';
+			    this.percentageMax     = '';
+			    this.percentageActive  = '';
+			
+			    // 2. 把右侧标题恢复成默认值
+			    this.getTitleList();
+			
+			    // 3. 如果外部需要知道“已重置”，可以再 emit
+			    // this.$emit('filter', {});   // 按需要决定是否把空条件抛出去
+			},
+			filterOk() {
+				this.$emit('filter', {
+					templateNumber: this.templateNumber,
+					wearMin: this.wearMin,
+					wearMax: this.wearMax,
+					priceMin: this.priceMin,
+					priceMax: this.priceMax,
+					paintIndex: this.paintIndex,
+					percentageMin: this.percentageMin,
+					percentageMax: this.percentageMax,
+				})
+			},
+			wearInput() {
+				this.wearActive = '';
+				this.updateTitleList();
+			},
+			wearChange(item) {
+				this.wearActive = item.localized_name;
+				this.wearMin = item.min;
+				this.wearMax = item.max;
+				this.updateTitleList();
+			},
+			paintKitsChange(item) {
+				this.phaseActive = item.id;
+				this.paintIndex = item.id;
+				this.updateTitleList();
+			},
+			percentageChange(item) {
+				this.percentageActive = item.label;
+				this.percentageMin = item.min;
+				this.percentageMax = item.max;
+				this.updateTitleList();
+			},
+			changeType(typ) {
+				this.mode = typ.mode;
+			},
+			updateTitleList() {
+				let title = this.titleList.find(item => item.mode == this.mode);
+				if (title) {
+					switch (this.mode) {
+						case 'percentage':
+							title.label = this.percentageActive;
+							break;
+						case 'template':
+							title.label = this.paintIndex;
+							break;
+						case 'wear':
+						    if (this.wearActive) {
+						        title.label = this.wearActive;
+						    }
+						    else if (this.wearMin !== '' || this.wearMax !== '') {
+						        const min = this.wearMin !== '' ? this.wearMin : '0';
+						        const max = this.wearMax !== '' ? this.wearMax : '0';
+						        title.label = `${min}-${max}`;
+						    }
+						    else {
+						        title.label = this.i18n.t('app.market.filter.csgo.wear_interval');
+						    }
+						    break;
+						case 'price':
+							// 只要任一价格有值就显示，否则显示默认
+							if (this.priceMin !== '' || this.priceMax !== '') {
+								const min = this.priceMin !== '' ? this.priceMin : '0';
+								const max = this.priceMax !== '' ? this.priceMax : '∞';
+								title.label = `${min}-${max}`;
+							} else {
+								title.label = this.i18n.t('app.market.filter.price_range');
+							}
+							break;
+						default:
+							title.label = this.i18n.t(this.mode);
+					}
+				}
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync();
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../theme.scss";
+
+	.goods-container-filter {
+		width: 650rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.filter-left {
+		width: 500rpx;
+		background-color: $app-background;
+
+		.filter-left-name {
+			width: 500rpx;
+			color: $app-text-primary;
+			font-size: $font-size-md;
+			padding: 20rpx;
+		}
+
+		.filter-left-input {
+			background-color: $app-surface;
+			margin: 10rpx 20rpx;
+			padding: 10rpx;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+		}
+
+		.filter-left-wear {
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+
+			.wear-ran {
+				width: 500rpx;
+				display: flex;
+				flex-direction: row;
+				justify-content: center;
+				align-items: center;
+
+				.wear-ran-input {
+					width: 150rpx;
+					padding: 10rpx;
+					font-size: $font-size-sm;
+					color: $app-text-primary;
+					border-bottom: 1rpx solid $app-link;
+				}
+
+				.wear-ran-text {
+					font-size: $font-size-sm;
+					color: $app-text-thirdly;
+					margin: 0rpx 10rpx;
+				}
+			}
+
+			.wear-item {
+				width: 230rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-text-thirdly;
+				text-align: center;
+				font-size: $font-size-sm;
+				border: 1rpx solid $app-surface-elevated;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+
+			.wear-item-active {
+				width: 230rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-background;
+				text-align: center;
+				font-size: $font-size-md;
+				background-color: #b38f55;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+		}
+
+		.filter-back {
+			width: 500rpx;
+			height: 66px;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.icons {
+				width: 50rpx;
+				padding-left: 10rpx;
+			}
+
+			.title {
+				width: 450rpx;
+				color: $app-background-black;
+				font-size: $font-size-md;
+				text-align: center;
+			}
+		}
+
+		.filter-left-scroll {
+			width: 500rpx;
+		}
+
+		.attr-list {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+
+			.item-type {
+				width: 500rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				margin: 10rpx;
+				font-size: $font-size-md;
+				color: $app-link;
+				padding: 0 10rpx;
+			}
+
+			.genre-item-active {
+				width: 230rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-background;
+				text-align: center;
+				font-size: $font-size-md;
+				background-color: #b38f55;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+
+			.genre-item {
+				width: 230rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-text-thirdly;
+				text-align: center;
+				font-size: $font-size-sm;
+				border: 1rpx solid $app-surface-elevated;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+		}
+	}
+
+	.filter-right {
+		width: 150rpx;
+		background: $app-surface;
+
+		.filter-line {
+			width: 150rpx;
+			height: 44px;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text-active {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			color: $app-link;
+			background: $app-background;
+			border-top: 1rpx solid $app-surface-elevated;
+			border-bottom: 1rpx solid $app-surface-elevated;
+			border-left: 1rpx solid $app-background;
+		}
+
+		.attr-text-check {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			color: $app-link;
+			border-left: 1rpx solid $app-background;
+		}
+	}
+
+	.operate-bottom {
+		width: 650rpx;
+		height: 50px;
+		display: flex;
+		flex-direction: row;
+		background-color: $app-background;
+
+		.operate-reset-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: $app-text-primary;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+
+		.operate-ok-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: $app-link;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+	}
+</style>

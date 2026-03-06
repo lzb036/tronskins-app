@@ -1,0 +1,869 @@
+<!-- 饰品模板详情 -->
+<template>
+	<view class="show-container">
+		<u-loading-page :loading="schema ? false : true" loading-text="loading..."></u-loading-page>
+		<view class="show-container" v-if="schema">
+			<image class="show-header-img" src="/static/image/game/show-bg.jpg"></image>
+			<view class="show-header-bg"></view>
+			<view class="show-header-nav" :style="{paddingTop:systemInfo.statusBarHeight + 10 + 'px'}">
+				<u-icon class="back-icon" name="arrow-left" size="16" color="#fff" @click="routeBack()"></u-icon>
+				<text class="nav-text">{{ i18n.t('app.market.product.details')}}</text>
+				<u-icon class="collect-icon" v-if="!isCollected" name="star" color="#fff" size="24"
+					@click="starItem()"></u-icon>
+				<u-icon class="collect-icon" v-if="isCollected" name="star-fill" color="#4773c8" size="24"
+					@click="removeItem()"></u-icon>
+			</view>
+			<view class="goods-header">
+				<BaseItem :width="260" :imageUrl="schema.image_url" :bg="rarity ? rarity.color : 'b0c3d9'"></BaseItem>
+				<view class="info">
+					<text class="market-name">{{schema.market_name}}</text>
+					<view class="tags">
+						<text class="tag-label">{{i18n.t('app.market.detail.steam_price')}}:</text>
+						<text class="tag">{{currencySymbol}}</text>
+						<text class="price">{{ schema.reference_price ? schema.reference_price : '0.00'}}</text>
+					</view>
+					<scroll-view v-if="schema.tags&&appid!=570" class="tags" :scroll-x="true" :show-scrollbar="false">
+						<text class="tag-label">{{i18n.t('app.market.detail.attribute')}}:</text>
+						<text class="tag-name"
+							:style="getTagsColor(schema.tags,'rarity')">{{getTagsName(schema.tags,'rarity')}}</text>
+						<text class="lin">|</text>
+						<text class="tag-name"
+							:style="getTagsColor(schema.tags,'quality')">{{getTagsName(schema.tags,'quality')}}</text>
+						<text class="lin">|</text>
+						<text class="tag-name"
+							:style="getTagsColor(schema.tags,'type')">{{getTagsName(schema.tags,'type')}}</text>
+					</scroll-view>
+					<scroll-view v-if="schema.tags&&appid==570" class="tags" :scroll-x="true" :show-scrollbar="false">
+						<text class="tag-label">{{i18n.t('app.market.dota2.hero')}}:</text>
+						<text class="tag-name"
+							:style="getTagsColor(schema.tags,'hero')">{{getTagsName(schema.tags,'hero')}}</text>
+						<text class="lin">|</text>
+						<text class="tag-name"
+							:style="getTagsColor(schema.tags,'slot')">{{getTagsName(schema.tags,'slot')}}</text>
+						<text class="lin">|</text>
+						<text class="tag-name"
+							:style="getTagsColor(schema.tags,'type')">{{getTagsName(schema.tags,'type')}}</text>
+					</scroll-view>
+				</view>
+			</view>
+			<!-- 修复：直接使用安全的条件判断 -->
+			<scroll-view class="wear-list" scroll-x="true"
+				v-if="wearList && Array.isArray(wearList) && wearList.length > 0">
+				<view
+					:class="[(appid==730?exterior.localized_name == wear.label:schema.id == wear.id) ? 'wear-item-active' : 'wear-item']"
+					v-for="wear in wearList" :key="wear.id" @click="wearChange(wear.id)">
+					<text class="wear-name">{{ wear.label }}</text>
+					<text class="wear-price">{{ currencySymbol + wear.price }}</text>
+				</view>
+				<!-- 修复：安全访问keys -->
+				<view class="exchange-item" v-if="qualityMap && keys && Array.isArray(keys) && keys.length > 1"
+					@click="changeWearType()">
+					<text class="wear-name">{{ qualityKey }}</text>
+					<image class="exchange-icon" src="/static/image/exchange.png"></image>
+				</view>
+			</scroll-view>
+			<view class="goods-sell">
+				<view class="sell-left">
+					<view class="box">
+						<text
+							class="num">{{schema.sell_num ? schema.sell_num : 0}}{{i18n.t('app.market.unit_qty')}}</text>
+						<text class="name">{{i18n.t('app.trade.onSale.text')}}</text>
+					</view>
+					<text class="lin">|</text>
+					<view class="box">
+						<text
+							class="num">{{schema.buy_num ? schema.buy_num : 0}}{{i18n.t('app.market.unit_qty')}}</text>
+						<text class="name">{{i18n.t('app.trade.purchase.text')}}</text>
+					</view>
+				</view>
+				<view class="sell-right">
+					<text class="sell-btn" @click="routeBuy()">{{i18n.t('app.trade.purchase.text')}}</text>
+					<text class="buy-btn"
+						@click="routeBulkBuy()">{{i18n.t('app.market.detail.bulk_buying.title')}}</text>
+				</view>
+			</view>
+			<view class="tab-content"
+				:style="{height:(systemInfo.windowHeight  - systemInfo.statusBarHeight - 214) + 'px'}">
+				<u-tabs :current="currentTab" :list="tabs" @click="handleTabClick" :activeStyle="{
+				fontSize:'28rpx',
+			    color: '#303133',
+			}" :inactiveStyle="{
+				fontSize:'28rpx',
+			    color: '#606266',
+			}" itemStyle="padding:10rpx 20rpx;height: 40px;" lineHeight="2" style="border-bottom: 1rpx solid #f4f4f4;"></u-tabs>
+				<swiper :current="currentTab" :duration="300" @change="handleSwiperChange" class="swiper-box">
+					<swiper-item>
+						<on-sale-list ref="saleListRef" :schema_id="schema_id" :appid="appid"
+							:showPaintKits="showPaintKits" :paintKits="paintKits"
+							:marketHashName="schema.market_hash_name" :exteriorKey="getExteriorKey()"></on-sale-list>
+					</swiper-item>
+					<swiper-item>
+						<buy-request-list ref="buyRequestListRef" :schema_id="schema_id"
+							:appid="appid"></buy-request-list>
+					</swiper-item>
+					<swiper-item>
+						<transaction-list ref="transactionRef" :schema_id="schema_id" :appid="appid"></transaction-list>
+					</swiper-item>
+					<!-- <swiper-item>
+						<price-trend-chart :appid="appid" :marketHashName="schema.market_hash_name"></price-trend-chart>
+					</swiper-item> -->
+				</swiper>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config';
+	import i18n from '@/utils/locales/i18n';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import OnSaleList from '@/components/shop/sale-manage/OnSaleList.nvue';
+	import BuyRequestList from '@/components/shop/buying/BuyRequestList.nvue';
+	import TransactionList from '@/components/shop/sale-manage/TransactionList.nvue';
+	import PriceTrendChart from '@/components/shop/sale-manage/PriceTrendChart.nvue';
+
+	import {
+		marketItemTemplateApi,
+		marketItemTemplate2Api,
+		GameItemAddStarApi,
+		GameItemRemoveStarApi,
+	} from '@/api/modules/market.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		getAppUserInfo
+	} from '@/utils/storage/modules/user.js';
+	import {
+		GetUserShopInfoApi
+	} from '@/api/modules/shop/shop.js';
+
+	export default {
+		components: {
+			BaseItem,
+			OnSaleList,
+			BuyRequestList,
+			TransactionList,
+			// PriceTrendChart
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				systemInfo: {},
+				schema_id: null,
+				appid: null,
+				isCollected: false,
+				schema: null,
+				quality: '',
+				exterior: '',
+				rarity: '',
+				paintKits: null,
+				showPaintKits: false,
+				wearList: [],
+				qualityMap: {},
+				qualityKey: '',
+				keys: [], // 确保初始化为数组
+				currentTab: 0,
+				tabs: [{
+						name: i18n.t('app.trade.onSale.text'),
+						value: 'on-sale-list'
+					},
+					{
+						name: i18n.t('app.trade.purchase.text'),
+						value: 'buy-request-list'
+					},
+					{
+						name: i18n.t('app.market.detail.trade_record'),
+						value: 'transaction-list'
+					},
+					// {
+					// 	name: i18n.t('app.market.detail.price_trend'),
+					// 	value: 'price-trend-chart'
+					// }
+				]
+			}
+		},
+		onLoad(options) {
+			this.schema_id = options.schema_id;
+			this.appid = options.appid;
+			this.getGameItem();
+		},
+		created() {
+			const systemInfo = uni.getSystemInfoSync();
+			this.systemInfo = systemInfo;
+		},
+		mounted() {
+			uni.$on('order-buying-success', () => {
+				this.currentTab = 1;
+				setTimeout(() => {
+					this.$refs.buyRequestListRef.refresh();
+					// uni.$u.toast(i18n.t("app.system.message.success"));
+				}, 1000)
+			})
+			uni.$on('order-purchase-success', () => {
+				this.currentTab = 0;
+				setTimeout(() => {
+					this.$refs.saleListRef.refresh();
+					uni.$u.toast(i18n.t("app.system.message.success"));
+				}, 1000)
+			})
+			uni.$on('purchaseStatusChanged', () => {
+				this.getGameItem();
+			});
+		},
+		methods: {
+			getExteriorKey() {
+				// 安全地获取 exteriorKey
+				if (this.schema &&
+					this.schema.tags &&
+					this.schema.tags.exterior &&
+					this.schema.tags.exterior.define &&
+					this.schema.tags.exterior.define.key) {
+					return this.schema.tags.exterior.define.key;
+				}
+				return '';
+			},
+			/**
+			 * 饰品关注
+			 */
+			async starItem() {
+				try {
+					if (!isLogin()) {
+						uni.$u.toast(i18n.t('app.system.message.nologin'));
+						return;
+					}
+					const res = await GameItemAddStarApi({
+						appId: this.appid,
+						schemaId: this.schema_id,
+					});
+					if (res.code == 0) {
+						this.isCollected = true;
+						uni.$u.toast(i18n.t('app.user.collection.message.success'));
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			/**
+			 * 饰品取消关注
+			 */
+			// 取消收藏
+			async removeItem() {
+				if (!isLogin()) {
+					uni.$u.toast(i18n.t('app.system.message.nologin'));
+					return;
+				}
+				try {
+					// ✅ 把 id 拼进路径，别传对象
+					const res = await GameItemRemoveStarApi(this.schema_id);
+					if (res.code == 0) {
+						this.isCollected = false;
+						uni.$u.toast(i18n.t('app.user.collection.uncollect_success'));
+					} else {
+						// 后端返回业务错误
+						uni.$u.toast(i18n.t('app.user.collection.uncollect_success'));
+					}
+				} catch (e) {
+					// 网络/接口异常
+					uni.$u.toast(i18n.t('app.user.collection.uncollect_success'));
+					console.error(e);
+				}
+			},
+			/**
+			 * 查看其他磨损度的饰品
+			 * @param {Object} schema_id
+			 */
+			wearChange(schema_id) {
+				this.schema_id = schema_id;
+				this.getGameItem();
+				this.$refs.saleListRef.schema_id = schema_id;
+				this.$refs.buyRequestListRef.schema_id = schema_id;
+				this.$refs.transactionRef.schema_id = schema_id;
+			},
+			/**
+			 * 求购
+			 */
+			async routeBuy() {
+				if (!isLogin()) {
+					uni.$u.toast(this.i18n.t('app.system.message.nologin'));
+					return;
+				}
+				// 检查求购状态是否在线
+				try {
+					const uuid = getAppUserInfo().uuid ? getAppUserInfo().uuid : getAppUserInfo().shop.uuid;
+					const res = await GetUserShopInfoApi({
+						uuid: uuid,
+					});
+					if (res.code === 0) {
+						const purchaseOnline = res.datas?.signWanted;
+						if (!purchaseOnline) {
+							uni.$u.toast(i18n.t('app.trade.purchase.offline_tips'));
+							return;
+						}
+					}
+				} catch (error) {
+					console.error(error);
+				}
+				let params = {
+					appid: this.schema.app_id,
+					schema_id: this.schema_id,
+					image_url: this.schema.image_url,
+					market_name: this.schema.market_name,
+					sell_min: this.schema.sell_min,
+					sell_max: this.schema.sell_max,
+					buy_min: this.schema.buy_min,
+					buy_max: this.schema.buy_max,
+					goodsType: this.schema.tags.type.name,
+					reference_price: this.schema.reference_price,
+					showPaintKits: this.showPaintKits,
+					paintKits: encodeURIComponent(JSON.stringify(this.paintKits)),
+					exteriorKey: this.schema?.tags?.exterior?.define?.key || ''
+				}
+				uni.$u.route('/pages/shop/buying/product-buying', params);
+			},
+			/**
+			 * 批量购买
+			 */
+			routeBulkBuy() {
+				if (!isLogin()) {
+					uni.$u.toast(i18n.t('app.system.message.nologin'));
+					return;
+				}
+				let params = {
+					appid: this.schema.app_id,
+					schema_id: this.schema_id,
+					image_url: this.schema.image_url,
+					market_name: this.schema.market_name,
+					sell_min: this.schema.sell_min,
+					sell_max: this.schema.sell_max,
+					buy_min: this.schema.buy_min,
+					buy_max: this.schema.buy_max,
+					goodsType: this.schema.tags.type.name,
+					reference_price: this.schema.reference_price,
+					showPaintKits: this.showPaintKits,
+					paintKits: encodeURIComponent(JSON.stringify(this.paintKits)),
+					exteriorKey: this.schema?.tags?.exterior?.define?.key || ''
+				}
+				uni.$u.route('/pages/shop/sale-manage/purchase', params);
+			},
+			async getGameItem() {
+				try {
+					let res;
+					let params = {
+						goodsId: this.schema_id,
+						appid: this.appid,
+					}
+					if (isLogin()) {
+						res = await marketItemTemplate2Api(params);
+					} else {
+						res = await marketItemTemplateApi(params);
+					}
+					if (res && res.code == 0) {
+						this.isCollected = res.datas.isCollected || false;
+						this.schema = res.datas.schema || null;
+						this.qualityMap = res.datas.map || {};
+						this.paintKits = res.datas.paintKits || null;
+						this.showPaintKits = !!(this.schema && this.schema.market_hash_name && this.schema
+							.market_hash_name.includes('Doppler'));
+						if (res.datas.schema && res.datas.schema?.tags) {
+							this.quality = res.datas.schema.tags.quality || '';
+							this.exterior = res.datas.schema.tags.exterior || '';
+							this.rarity = res.datas.schema.tags.rarity || '';
+						}
+						this.getWearList();
+					} else {
+						console.error('API response error:', res);
+					}
+				} catch (e) {
+					console.error('Error in getGameItem:', e);
+				}
+			},
+			changeWearType() {
+				console.log('qualityMap:', this.qualityMap);
+				console.log('keys:', this.keys);
+				console.log('schema:', this.schema)
+
+				// 安全访问：确保keys是数组
+				if (!this.keys || !Array.isArray(this.keys)) {
+					console.warn('keys is not an array');
+					this.keys = [];
+					return;
+				}
+
+				// 安全查找
+				let key = null;
+				try {
+					key = this.keys.find(key => {
+						if (this.appid == 730) {
+							return key === this.qualityKey;
+						} else {
+							try {
+								const parsedKey = JSON.parse(key);
+								return parsedKey && parsedKey.label === this.qualityKey;
+							} catch (e) {
+								console.error('Error parsing key:', key, e);
+								return false;
+							}
+						}
+					});
+				} catch (e) {
+					console.error('Error finding key:', e);
+					return;
+				}
+
+				if (!key) {
+					console.warn('Key not found');
+					return;
+				}
+
+				const filteredArray = this.keys.filter((element) => element != key);
+				let list = this.qualityMap[key];
+
+				if (list && Array.isArray(list)) {
+					let quality = this.schema?.tags?.quality?.localized_name;
+					let exterior = this.schema?.tags?.exterior?.localized_name;
+
+					for (let item of list) {
+						if (!item) continue;
+
+						let tag = this.appid == 730 ? exterior : quality;
+						if (item.label && tag && item.label.includes(tag)) {
+							this.wearChange(item.id);
+							break;
+						}
+					}
+
+					// 安全设置qualityKey
+					if (filteredArray.length > 0) {
+						if (this.appid == 730) {
+							this.qualityKey = filteredArray[0];
+						} else {
+							try {
+								const parsedKey = JSON.parse(filteredArray[0]);
+								this.qualityKey = parsedKey ? parsedKey.label : filteredArray[0];
+							} catch (e) {
+								this.qualityKey = filteredArray[0];
+							}
+						}
+					}
+					this.wearList = list;
+				}
+			},
+			getWearList() {
+				// 安全访问：确保qualityMap是对象
+				if (!this.qualityMap || typeof this.qualityMap !== 'object') {
+					console.warn('qualityMap is not an object');
+					this.wearList = [];
+					this.keys = []; // 确保keys是数组
+					this.qualityKey = '';
+					return;
+				}
+
+				// 安全获取keys
+				try {
+					this.keys = Object.keys(this.qualityMap);
+				} catch (e) {
+					console.error('Error getting keys from qualityMap:', e);
+					this.keys = [];
+					this.wearList = [];
+					this.qualityKey = '';
+					return;
+				}
+
+				// 确保keys是数组
+				if (!Array.isArray(this.keys)) {
+					this.keys = [];
+				}
+
+				if (this.appid == 730 && this.schema) {
+					let key = this.schema.tags?.quality?.localized_name;
+
+					if (key && this.keys.includes(key)) {
+						// 安全获取wearList
+						const wearListData = this.qualityMap[key];
+						this.wearList = Array.isArray(wearListData) ? wearListData : [];
+
+						// 设置qualityKey
+						const otherKeys = this.keys.filter(k => k !== key);
+						this.qualityKey = otherKeys.length > 0 ? otherKeys[0] : '';
+					} else {
+						// 如果没有找到对应的key，使用第一个key
+						if (this.keys.length > 0) {
+							const firstKey = this.keys[0];
+							const wearListData = this.qualityMap[firstKey];
+							this.wearList = Array.isArray(wearListData) ? wearListData : [];
+							this.qualityKey = this.keys.length > 1 ? this.keys[1] : '';
+						} else {
+							this.wearList = [];
+							this.qualityKey = '';
+						}
+					}
+				} else if (this.appid == 570 && this.schema) {
+					// 安全处理DOTA2逻辑
+					const baseId = this.schema.baseId;
+					let foundBaseId = false;
+
+					for (let key of this.keys) {
+						try {
+							const parsedKey = JSON.parse(key);
+							const id = parsedKey?.id;
+							const label = parsedKey?.label;
+
+							if (id && label) {
+								if (id != baseId && !this.qualityKey) {
+									this.qualityKey = label;
+								}
+
+								if (id == baseId) {
+									const wearListData = this.qualityMap[key];
+									this.wearList = Array.isArray(wearListData) ? wearListData : [];
+									foundBaseId = true;
+								}
+							}
+						} catch (e) {
+							console.error('Error parsing key:', key, e);
+						}
+					}
+
+					// 如果没有找到baseId，使用第一个key
+					if (!foundBaseId && this.keys.length > 0) {
+						try {
+							const firstKey = JSON.parse(this.keys[0]);
+							this.qualityKey = firstKey?.label || '';
+							this.wearList = Array.isArray(this.qualityMap[this.keys[0]]) ? this.qualityMap[this.keys[0]] :
+								[];
+						} catch (e) {
+							this.qualityKey = '';
+							this.wearList = [];
+						}
+					}
+				} else {
+					// 默认处理
+					if (this.keys.length > 0) {
+						const firstKey = this.keys[0];
+						const wearListData = this.qualityMap[firstKey];
+						this.wearList = Array.isArray(wearListData) ? wearListData : [];
+						this.qualityKey = this.keys.length > 1 ? this.keys[1] : '';
+					} else {
+						this.wearList = [];
+						this.qualityKey = '';
+					}
+				}
+			},
+			handleTabClick(e) {
+				this.currentTab = e.index;
+			},
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+			},
+			getTagsColor(obj, key) {
+				let sty = {
+					color: '#c4c4c4'
+				};
+				if (!obj || !obj[key]) {
+					return sty;
+				}
+				sty.color = '#' + (obj[key] ? (obj[key].color ? obj[key].color : 'c4c4c4') : 'c4c4c4');
+				return sty;
+			},
+			getTagsName(obj, key) {
+				if (!obj || !obj[key]) {
+					return '';
+				}
+				return obj[key] ? obj[key].localized_name : '';
+			},
+			routeBack() {
+				uni.navigateBack({
+					delta: 1,
+					success: () => {
+						uni.$emit("refresh-collect", {
+							refresh: true
+						});
+					}
+				});
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.swiper-box {
+		flex: 1;
+		width: 750rpx;
+	}
+
+	.show-header-nav {
+		display: flex;
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+		padding: 20rpx;
+		position: relative;
+
+		.nav-text {
+			color: #fff;
+			lines: 1;
+			text-overflow: ellipsis;
+			font-size: $font-size-md;
+		}
+
+		.back-icon {
+			position: absolute;
+			left: 10rpx;
+			bottom: 20rpx;
+		}
+
+		.collect-icon {
+			position: absolute;
+			right: 10rpx;
+			bottom: 18rpx;
+		}
+	}
+
+	.show-container {
+		position: relative;
+
+		.show-header-bg {
+			width: 750rpx;
+			height: 550rpx;
+			background-color: $app-background-black;
+			position: absolute;
+			left: 0;
+			top: 0;
+			opacity: 0.3;
+		}
+
+		.show-header-img {
+			width: 750rpx;
+			height: 550rpx;
+			position: absolute;
+			left: 0;
+			top: 0;
+			opacity: 1;
+		}
+	}
+
+	.goods-header {
+		width: 750rpx;
+		//height: 90px;
+		display: flex;
+		flex-direction: row;
+		padding: 20rpx 20rpx 0 20rpx;
+
+		.info {
+			width: 450rpx;
+			padding-left: 20rpx;
+
+			.market-name {
+				height: 56rpx;
+				lines: 1;
+				text-overflow: ellipsis;
+				font-size: $font-size-md;
+				color: $app-surface;
+				padding-top: 5rpx;
+			}
+
+			.price {
+				font-size: $font-size-md;
+				color: $app-text-price;
+			}
+
+			.tags-scroll {
+				padding: 0;
+			}
+
+			.tags {
+				display: flex;
+				flex-direction: row;
+				padding: 10rpx 0;
+				align-items: center;
+
+				.tag-label {
+					font-size: $font-size-sm;
+					color: $app-text-disabled;
+					padding-right: 10rpx;
+				}
+
+
+				.tag {
+					font-size: $font-size-sm;
+					color: $app-text-price;
+					margin-right: 5rpx;
+				}
+
+				.tag-name {
+					font-size: $font-size-sm;
+					color: $app-text-thirdly;
+				}
+
+				.lin {
+					padding: 0 14rpx;
+					font-size: $font-size-xs;
+					color: $app-text-disabled;
+				}
+			}
+		}
+	}
+
+	.wear-list {
+		width: 750rpx;
+		height: 38px;
+		display: flex;
+		flex-direction: row;
+		border-bottom: 1rpx solid #2b2b2b;
+		padding: 0 8rpx;
+
+		.wear-item,
+		.wear-item-active {
+			width: 200rpx;
+			padding: 8rpx 16rpx;
+			margin: 10rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			border-radius: 2rpx;
+			border: 1rpx solid $app-text-secondary;
+
+			.wear-name {
+				width: 200rpx;
+				font-size: $font-size-xs;
+				color: #c4c4c4;
+				text-align: center;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			.wear-price {
+				width: 200rpx;
+				font-size: $font-size-xs;
+				color: #c4c4c4;
+				text-align: center;
+				margin-top: 4rpx;
+				overflow: hidden;
+			}
+		}
+
+		.wear-item-active {
+			background-color: $app-text-hint;
+
+			.wear-name,
+			.wear-price {
+				color: #fff;
+			}
+		}
+
+		.exchange-item {
+			padding: 8rpx 16rpx;
+			margin: 10rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+			border-radius: 2rpx;
+			border: 1rpx solid $app-text-hint;
+			width: 150rpx;
+
+			.wear-name {
+				font-size: 18rpx;
+				color: #c4c4c4;
+				text-align: center;
+				width: 100rpx;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			.exchange-icon {
+				width: 20rpx;
+				height: 20rpx;
+				margin-left: 4rpx;
+			}
+		}
+	}
+
+	.goods-sell {
+		width: 750rpx;
+		height: 40px;
+		display: flex;
+		flex-direction: row;
+		padding: 20rpx 10rpx;
+		align-items: center;
+		justify-content: space-between;
+
+		.sell-left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.lin {
+				color: #c4c4c4;
+				font-size: 22rpx;
+			}
+
+			.box {
+				width: 120rpx;
+
+				.num {
+					width: 120rpx;
+					font-size: 24rpx;
+					color: #c4c4c4;
+					text-align: center;
+				}
+
+
+				.name {
+					width: 120rpx;
+					font-size: $font-size-xs;
+					color: #888;
+					margin-top: 5rpx;
+					text-align: center;
+				}
+			}
+		}
+
+		.sell-right {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.sell-btn {
+				height: 48rpx;
+				line-height: 48rpx;
+				margin: 0 15rpx;
+				font-size: $font-size-sm;
+				color: $app-background;
+				padding: 0 20rpx;
+				border-radius: 5rpx;
+				background: $app-danger-dark;
+				border: 1rpx solid $app-danger-dark;
+			}
+
+			.buy-btn {
+				height: 48rpx;
+				line-height: 48rpx;
+				margin: 0 15rpx;
+				font-size: $font-size-sm;
+				color: #fff;
+				padding: 0 20rpx;
+				border-radius: 5rpx;
+				background: $app-link;
+				border: 1rpx solid $app-link;
+			}
+
+			.lin {
+				color: #c4c4c4;
+				font-size: $font-size-sm;
+			}
+		}
+	}
+
+	.tab-content {
+		width: 750rpx;
+		height: 380px;
+		background-color: $app-background;
+		border-radius: 15rpx;
+	}
+</style>

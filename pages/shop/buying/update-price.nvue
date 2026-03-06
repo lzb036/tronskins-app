@@ -1,0 +1,432 @@
+<!-- 求购改价 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.trade.purchase.price_change')" :autoBack="true" placeholder
+			:right-text="i18n.t('app.inventory.pricing')" @rightClick="onePricing()">
+		</u-navbar>
+		<view class="container">
+			<view class="item-box">
+				<base-item :imageUrl="schemas?schemas.image_url:''" :width="180" :num="item.count"></base-item>
+				<view class="right">
+					<text class="market-name ellipsis">{{schemas.market_name?schemas.market_name:schemas.market_hash_name}}</text>
+					<text v-if="item.paint_wear_min&&item.paint_wear_max" class="wear">
+						{{ i18n.t('app.market.filter.csgo.wear_interval') +': '+ item.paint_wear_min +' - '+item.paint_wear_max }}
+					</text>
+				</view>
+			</view>
+			<view class="price-box">
+				<view class="box">
+					<text class="value">{{currencySymbol}}&nbsp;{{getSellMin()}}</text>
+					<text class="label">{{i18n.t('app.market.detail.sale_lowest')}}</text>
+				</view>
+				<view class="line"></view>
+				<view class="box">
+					<text class="value">{{currencySymbol}}&nbsp;{{schemas.buy_max ? schemas.buy_max: '0.00'}}</text>
+					<text class="label">{{i18n.t('app.market.detail.purchase_highest')}}</text>
+				</view>
+			</view>
+			<view class="color-block"></view>
+			<view class="price-input-box">
+				<text class="label">{{i18n.t('app.trade.purchase.price')}}</text>
+				<text class="span-symbol">{{item.price?currencySymbol:' '}}</text>
+				<input class="price-input" v-model="item.price" @input="checkPrice($event)"
+					:placeholder="i18n.t('app.trade.purchase.placeholder_price')" type="digit" inputmode="decimal" />
+			</view>
+			<view class="num-input-box">
+				<text class="label">{{i18n.t('app.trade.purchase.num')}}</text>
+				<input class="num-input" v-model="item.nums" @input="checkNum($event,item)"
+					:placeholder="i18n.t('app.trade.purchase.placeholder_num')" type="digit" inputmode="decimal" />
+			</view>
+			<view class="tip-wrap">
+				<text class="tip-text">1.{{i18n.t('app.trade.purchase.buyer_notice_1')}}</text>
+				<text class="tip-red">{{i18n.t('app.trade.purchase.buyer_notice_2')}}</text>
+				<text class="tip-text">{{i18n.t('app.trade.purchase.buyer_notice_3')}}</text>
+			</view>
+			<text class="tip-text-1">2.{{i18n.t('app.trade.purchase.buyer_notice_4')}}</text>
+			<view class="empty-block"></view>
+			<view class="footer">
+				<view class="left">
+					<text class="label">{{i18n.t('app.trade.purchase.payable')}}:</text>
+					<text class="price">{{ currencySymbol+' '+total}}</text>
+				</view>
+				<view class="right">
+					<button type="primary" size="mini" class="confirm-btn"
+						@click="confirm()">{{i18n.t('app.common.confirm')}}</button>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import config from '@/config/index.js';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import {
+		GetSysParamsApi,
+		MyBuyUpdatePriceApi
+	} from '@/api/modules/shop/shop-product.js';
+	import { getMarketMinPrice , getPricingRules  } from '@/utils/order/productUtils.js'
+
+	export default {
+		components: {
+			BaseItem,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				item: {},
+				schemas: {},
+				showPricing: false,
+				showOverlay: false,
+				pricingItem: {
+					id: '',
+					schemaId: '',
+					appid: null
+				},
+				showSuccess: false,
+				showWarning: false,
+				es_min_price: 0,
+			}
+		},
+		onLoad(options) {
+			this.item = JSON.parse(decodeURIComponent(options.item));
+			let schemas = JSON.parse(decodeURIComponent(options.schemas));
+			this.schemas = schemas[this.item.schema_id] ? schemas[this.item.schema_id] : schemas;
+		},
+		mounted() {
+			this.getShopParams();
+		},
+		computed: {
+			total() {
+				let amount = this.item.price * this.item.nums;
+				return String(Math.floor(Number(amount) * 100) / 100);
+			}
+		},
+		methods: {
+			checkNum(e, item) {
+				if (e.detail.value.includes(".")) {
+					let decimal = e.detail.value.split(".");
+					this.$nextTick(() => {
+						item.nums = decimal[0];
+						uni.$u.toast(this.i18n.t('app.market.detail.message.num_error'));
+						return;
+					});
+				}
+				let num = Number(e.detail.value);
+				if (num <= 200) return;
+				this.$nextTick(() => {
+					item.nums = 200;
+				});
+			},
+			async getShopParams() {
+				const res = await GetSysParamsApi();
+				this.es_min_price = res.datas.minPrice;
+			},
+			/**
+			 * 确保价格为小数点后两位
+			 */
+			checkPrice(e) {
+				if (e.detail.value) {
+					let value = Number(e.detail.value);
+					let integerPart = Number(String(value).split('.')[0]);
+					let length = null;
+					if (isNaN(integerPart) || (!isNaN(integerPart) && integerPart < 0)) {
+						// 转换成整数失败，包含非数字字符
+						uni.$u.toast(this.i18n.t('app.market.filter.message.price_error'));
+						this.item.price = '';
+						return;
+					}
+					if (String(value).split('.')[1]) {
+						length = String(value).split('.')[1].length;
+						if ((Number(value) < this.es_min_price) && length && length >= 2) {
+							value = this.es_min_price;
+							this.item.price = this.es_min_price;
+							uni.$u.toast(this.i18n.t('app.trade.purchase.message.min_price_error'));
+						}
+						if (length && length >= 2) {
+							this.$nextTick(() => {
+								this.item.price = value.toFixed(2);
+							})
+						}
+					}
+				}
+			},
+			/**
+			 * 一键定价
+			 */
+			onePricing() {
+				//const buffMinPrice = this.schemas.buff_min_price ?? 0;
+				//const sellMin = this.schemas.sell_min ?? 0;
+				//const marketMinPrice = getMarketMinPrice(buffMinPrice,sellMin);
+				const buyMax = this.schemas.buy_max ?? 0;
+				this.item.price = getPricingRules(buyMax);
+				this.$forceUpdate();
+			},
+			getSellMin(){
+				const buffMinPrice = this.schemas.buff_min_price ?? 0;
+				const sellMin = this.schemas.sell_min ?? 0;
+				const marketMinPrice = getMarketMinPrice(buffMinPrice,sellMin);
+				return marketMinPrice
+			},
+			handleGetBuyList(length) {
+				this.length = length;
+				if (this.length > 0) {
+					this.showOverlay = true;
+					this.showPricing = true;
+					this.$refs.pricingRef.show = true;
+				} else {
+					this.handlePick(undefined, this.pricingItem.schemaId, this.pricingItem.id);
+				}
+			},
+			handlePick(price, schemaId, id) {
+				if (price) {
+					this.item.price = price;
+					this.showSuccess = true;
+				} else {
+					this.item.price = 0;
+				}
+				this.closeContent();
+			},
+			closeContent() {
+				this.showPricing = false;
+				this.showOverlay = false;
+				this.$refs.pricingRef.show = false;
+			},
+			async confirm() {
+			  // 高于等于在售最低价且价格>10，弹出提示
+			  const usdBuyPrice = this.item.price;
+			  const sellMinUsd  = this.schemas.sell_min;
+			  console.log(sellMinUsd)
+			  const showPopConfirm = usdBuyPrice >= 10 && usdBuyPrice > sellMinUsd;
+			
+			  if (showPopConfirm) {
+			    const { confirm } = await uni.showModal({
+			      title: this.i18n.t('app.system.tips.title'),
+			      content: this.i18n.t('app.trade.purchase.message.confirm_to_buy'),
+			      confirmText: this.i18n.t('app.common.confirm'),
+			      cancelText: this.i18n.t('app.common.cancel')
+			    });
+			    if (!confirm) return;          
+			  }
+			  await this.updateSubmit();
+			},
+			async updateSubmit() {
+				let params = [];
+				let items = {
+					id: this.item.id,
+					price: this.item.price,
+					nums: this.item.nums
+				};
+				params.push(items);
+				const res = await MyBuyUpdatePriceApi({
+					items: params
+				});
+				if (res.code != 0) {
+					uni.$u.toast(res.datas);
+					return;
+				}
+				uni.$u.toast(this.i18n.t('app.inventory.message.price_change_success'));
+				setTimeout(() => {
+					uni.$emit('change-price');
+					uni.navigateBack();
+				}, 1000);
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.item-box {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding: 20rpx;
+
+		.right {
+			width: 390rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			justify-content: center;
+			padding-left: 20rpx;
+		}
+
+		.market-name {
+			font-size: $font-size-md;
+		}
+
+		.wear {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			margin-top: 10rpx;
+		}
+	}
+
+	.price-box {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-top: 10rpx;
+
+		.box {
+			width: 355rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			padding: 20rpx 0;
+
+			.value {
+				font-size: $font-size-md;
+				color: $app-text-price;
+				margin-bottom: 6rpx;
+				font-weight: bold;
+			}
+
+			.label {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+			}
+		}
+
+		.line {
+			height: 20rpx;
+			position: absolute;
+			right: 355rpx;
+			top: 40rpx;
+			border: 1rpx solid $app-divider;
+		}
+	}
+
+	.color-block {
+		width: 750rpx;
+		height: 30rpx;
+		background: $app-surface-elevated;
+		position: relative;
+	}
+
+	.price-input-box {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding: 20rpx 30rpx;
+		border-bottom: 2rpx solid $app-surface-elevated;
+
+		.label {
+			font-size: $font-size-md;
+		}
+
+		.span-symbol {
+			font-size: $font-size-md;
+			margin-left: 40rpx;
+		}
+
+		.price-input {
+			width: 400rpx;
+			font-size: $font-size-md;
+			color: $app-text-secondary;
+			padding-left: 10rpx;
+		}
+	}
+
+	.num-input-box {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding: 20rpx 30rpx;
+
+		.label {
+			font-size: $font-size-md;
+		}
+
+		.num-input {
+			width: 400rpx;
+			font-size: $font-size-md;
+			color: $app-text-secondary;
+			margin-left: 60rpx;
+		}
+	}
+
+	.empty-block {
+		width: 750rpx;
+		height: 700rpx;
+		background: $app-surface;
+	}
+
+	.tip-wrap {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		padding: 20rpx 80rpx 10rpx 30rpx;
+		background-color: $app-surface;
+		flex-wrap: wrap;
+
+		.tip-text {
+			font-size: $font-size-sm;
+			color: $app-text-hint;
+		}
+	}
+
+	.tip-text-1 {
+		width: 750rpx;
+		font-size: $font-size-sm;
+		color: $app-text-hint;
+		padding: 10rpx 80rpx 10rpx 30rpx;
+		background-color: $app-surface;
+	}
+
+	.tip-red {
+		color: $app-danger-dark;
+		font-size: $font-size-sm;
+	}
+
+	.footer {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		background: $app-background;
+		padding: 20rpx 30rpx;
+		align-items: center;
+		justify-content: space-between;
+		position: fixed;
+		bottom: 0;
+
+		.left {
+			display: flex;
+			flex-direction: row;
+
+			.label {
+				font-size: $font-size-sm;
+			}
+
+			.price {
+				font-size: $font-size-sm;
+				color: $app-text-price;
+				margin-left: 10rpx;
+			}
+		}
+
+		.right>.confirm-btn {
+			width: 200rpx;
+			font-size: $font-size-md;
+			text-align: center;
+			background: $app-link;
+			border-radius: 5rpx;
+		}
+	}
+</style>

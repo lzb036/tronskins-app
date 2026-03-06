@@ -1,0 +1,295 @@
+<!-- 单品收藏 -->
+<template>
+	<view>
+		<sort-price-filter :itemName="itemName" :tags="tags" :appid="appid" @ascPrice="refresh($event,'asc')" 
+			@keywords="refresh($event,'keywords')" @filterType="refresh($event,'type')"></sort-price-filter>
+		<u-skeleton :loading="isLoading" rows="10">
+			<list-refresh :dataList="list" :total="total" height="84" @refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item }">
+					<view class="product-item"  @click="route(item)">
+						<base-item :imageUrl="item.imageUrl" :width="156" :exterior="getExterior(item)"
+							:percentage="item.percentage" :phase="item.phase" :bg="getRarity(item)" :appid="appid" :schema_id="item.schemaId"></base-item>
+						<view class="product-title">
+							<view class="market-name-box" >
+								<text class="invalid-tag" v-if="item.status">{{ item.statusName }}</text>
+								<text class="market-name">{{item.marketName}}</text>
+							</view>
+							<view class="product-price">
+								<text class="price-value">{{currencySymbol + item.price}}</text>
+							</view>
+						</view>
+						<text class="cancel-btn"
+							@click.stop="cancelSubmit($event,item.itemId)">{{ i18n.t('app.user.collection.uncollect') }}</text>
+						<text class="item-paint-wear"
+							v-if="item.paintWear">{{i18n.t('app.market.csgo.abradability')}}:{{item.paintWear}}</text>
+						<view class="bottom">
+							<wear-progress-bar v-if="item.paintWear" :paintWear="item.paintWear"
+								:width="350"></wear-progress-bar>
+							<view class="right">
+								<sticker-list class="item-sticker-list" v-if="item.stickers&&item.stickers.length > 0"
+									:list="item.stickers"></sticker-list>
+								<sticker-list class="item-sticker-list" v-if="item.keychains&&item.keychains.length > 0"
+									:list="item.keychains"></sticker-list>
+								<gem-list class="item-gem-list" v-if="item.gemList&&item.gemList.length > 0"
+									:list="item.gemList" :width="50"></gem-list>
+							</view>
+						</view>
+					</view>
+				</template>
+			</list-refresh>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import SortPriceFilter from '@/components/layout/SortPriceFilter.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import StickerList from '@/components/game-item/StickerList.nvue';
+	import GemList from '@/components/game-item/GemList.nvue';
+	import {
+		ProductFavoriteListApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		RemoveFavoriteApi
+	} from '@/api/modules/market.js';
+	import { getGameFile } from '@/utils/order/productUtils.js'
+	export default {
+		components: {
+			ListRefresh,
+			BaseItem,
+			SortPriceFilter,
+			WearProgressBar,
+			GemList,
+			StickerList,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				appid: getGameType(),
+				list: [],
+				ascPrice: false,
+				marketName: '',
+				tags: {},
+				itemName: '',
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				total: null,
+				isLoading: false,
+			}
+		},
+		created() {
+			this.queryList();
+		},
+		mounted() {
+			uni.$on('product-detail-reload', () => {
+				this.refresh();
+			});
+		},
+		methods: {
+			async cancelSubmit(e, itemId) {
+				e.stopPropagation();
+				uni.showModal({
+					content: this.i18n.t('app.user.collection.uncollect_tips'),
+					confirmText: this.i18n.t('app.common.confirm'),
+					cancelText: this.i18n.t('app.common.cancel'),
+					success: async (result) => {
+						if (result.confirm) {
+							try{
+								const res = await RemoveFavoriteApi(itemId);
+								if (res.statusCode == 200) {
+									uni.$u.toast(this.i18n.t('app.user.collection.uncollect_success'));
+									setTimeout(() => {
+										this.refresh();
+									}, 1000);
+								}
+							}catch(e){
+								console.log(e)
+							}
+						}
+					}
+				});
+			},
+			getExterior(item) {
+				try {
+					return item.tags.exterior
+				} catch (e) {
+
+				}
+			},
+			getRarity(item) {
+				try {
+					return item.tags.rarity.color
+				} catch (e) {
+
+				}
+			},
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			route(item) {
+					uni.$u.route('/pages/product-market/product-template-detail', {
+						schema_id: item.schemaId,
+						appid: item.appid
+					});
+			},
+			async refresh(e, type) {
+				try {
+					this.isLoading = true;
+					if (type == 'asc') {
+						this.ascPrice = e;
+					}
+					if (type == 'keywords') {
+						this.marketName = e;
+					}
+					if (type == 'type') {
+						this.tags = e.tags;
+						this.itemName = e.itemName;
+					}
+					this.list = [];
+					this.pager.page = 1;
+					await this.queryList();
+				} catch (e) {
+
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.queryList();
+			},
+			async queryList() {
+				let params = {
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					asc: this.ascPrice,
+					field: 'price',
+					keywords: this.marketName,
+					tags: this.tags,
+					itemName: this.itemName
+				}
+				const res = await ProductFavoriteListApi(params);
+				if (res.code == 0) {
+					this.list = this.list.concat(res.datas.list);
+					this.total = res.datas.pager.total;
+				}
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+	.product-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		padding: 10rpx 10rpx 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+		margin-bottom: 10rpx;
+		position: relative;
+
+		.product-title {
+			width: 560rpx;
+			display: flex;
+			flex-direction: column;
+			padding-left: 20rpx;
+
+			.market-name-box {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				justify-content: flex-start;
+			}
+
+			.invalid-tag {
+				color: $app-background;
+				font-size: $font-size-xxs;
+				background: $app-text-thirdly;
+				border-radius: 10rpx;
+				padding: 4rpx 10rpx;
+				margin-right: 6rpx;
+			}
+
+			.market-name {
+				font-size: $font-size-sml;
+				color: $app-text-primary;
+			}
+
+			.product-price {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				justify-content: space-between;
+				margin-top: 15rpx;
+
+				.price-value {
+					font-size: $font-size-sm;
+					color: $app-text-price;
+					font-weight: 300;
+					font-weight: bold;
+					margin-right: 10rpx;
+				}
+			}
+		}
+
+		.item-paint-wear {
+			width: 710rpx;
+			font-size: $font-size-xs;
+			color: $app-text-thirdly;
+			lines: 1;
+			text-overflow: ellipsis;
+			padding: 10rpx 0;
+		}
+
+		.bottom {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+
+			.right {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				justify-content: flex-end;
+			}
+
+			.item-gem-list {
+				padding: 0 5rpx;
+			}
+		}
+
+		.cancel-btn {
+			width: 120rpx;
+			height: 40rpx;
+			font-size: 20rpx;
+			border-radius: 5rpx;
+			color: $app-background;
+			text-align: center;
+			padding: 6rpx 0;
+			background: $app-text-secondary;
+			border: 1rpx solid $app-text-secondary;
+			position: absolute;
+			right: 20rpx;
+			top: 56rpx;
+		}
+	}
+</style>

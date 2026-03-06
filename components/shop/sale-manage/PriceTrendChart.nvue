@@ -1,0 +1,200 @@
+<!-- 价格趋势组件 -->
+<template>
+	<view class="box">
+		<view class="title-box">
+			<view class="left" v-for="market in marketList" :key="market.key">
+				<text class="label" v-if="activeMarket == market.key">{{ i18n.t(market.label) }}</text>
+			</view>
+			<view class="title-right" @click="openSelect()">
+				<u-icon name="calendar" color="#888" size="28"></u-icon>
+			</view>
+		</view>
+		<u-popup :show="show" @close="show = false" mode="center">
+			<view class="selector">
+				<view class="select-item" v-for="opt in selectOptions" :key="opt.value" @click="changeOptions(opt)">
+					<text :class="activeOpt.value == opt.value?'active label': 'label'">{{ i18n.t(opt.label) }}</text>
+				</view>
+			</view>
+		</u-popup>
+		<!-- <TrendCharts v-if="timeList.length>0&&priceList.length>0" :timeList="timeList" :priceList="priceList"
+			:legend="legend">
+		</TrendCharts> -->
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	// import TrendCharts from "@/components/layout/TrendCharts";
+	import {
+		GameItemPriceTrendChartApi
+	} from "@/api/modules/market.js";
+	import {
+		isLogin
+	} from '@/services/user.js';
+
+	export default {
+		// components: {
+		// 	TrendCharts
+		// },
+		props: {
+			appid: {
+				type: String | Number,
+				default: 730
+			},
+			marketHashName: {
+				type: String,
+				default: ''
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				days: 30,
+				activeMarket: 'steam',
+				marketList: [{
+					label: 'app.market.detail.steam_price_history',
+					key: "steam",
+				}],
+				activeOpt: {
+					label: 'lastOneMonth',
+					value: 30
+				},
+				selectOptions: [{
+						label: 'app.market.detail.price_trend.seven_days',
+						value: 7
+					},
+					{
+						label: 'app.market.detail.price_trend.last_one_month',
+						value: 30
+					},
+					{
+						label: 'app.market.detail.price_trend.last_half_year',
+						value: 180
+					},
+					{
+						label: 'app.market.detail.price_trend.last_year',
+						value: 365
+					},
+				],
+				timeList: [],
+				priceList: ["0", "-"],
+				show: false
+			}
+		},
+		mounted() {
+			this.getPirceHistory();
+		},
+		watch: {
+			appid(val, oldVal) {
+				if (val != oldVal) {
+					this.changeChart();
+				}
+			}
+		},
+		methods: {
+			openSelect() {
+				this.show = true;
+			},
+			changeOptions(opt) {
+				this.activeOpt = opt;
+				this.days = opt.value;
+				this.changeChart();
+				this.show = false;
+			},
+			async getPirceHistory() {
+				if (!isLogin()) {
+					return;
+				}
+				let params = {
+					appId: this.appid ? this.appid : this.es_main_appid,
+					market: this.activeMarket,
+					marketHashName: this.marketHashName,
+					days: this.days
+				};
+				try{
+					const res = await GameItemPriceTrendChartApi(params);
+					if (res.datas && res.datas.priceInfos) {
+						this.priceList = [];
+						res.datas.priceInfos.forEach(item => {
+							this.priceList.push(String(item.price));
+							let time = uni.$u.timeFormat(item.time * 1000,
+								'yyyy-mm-dd hh:MM:ss');
+							this.timeList.push(time);
+						})
+						this.legend = this.activeOpt.label;
+					} else {
+						this.priceList = ["0", "-"];
+						this.timeList = [];
+					}
+				}catch(err){
+					console.log(err)
+				}
+			},
+			changeChart() {
+				this.priceList = ["0", "-"];
+				this.timeList = [];
+				this.getPirceHistory();
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	
+	.box {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.title-box {
+		width: 750rpx;
+		padding: 20rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+
+		.left {
+			width: 355rpx;
+			display: flex;
+			justify-content: flex-start;
+
+			.label {
+				text-align: left;
+				font-size: $font-size-md;
+				color: #4674c9;
+			}
+		}
+
+		.title-right {
+			width: 355rpx;
+			display: flex;
+			align-items: flex-end;
+		}
+	}
+
+	.selector {
+		width: 750rpx;
+		padding: 20rpx 20rpx 10rpx;
+		position: fixed;
+		top: 640rpx;
+		left: 0;
+		background: $app-background;
+		z-index: 2;
+
+		.select-item {
+			padding: 20rpx 0;
+			border-bottom: 1rpx solid $app-background;
+		}
+
+		.label {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+
+		.active {
+			color: $app-primary;
+		}
+	}
+</style>

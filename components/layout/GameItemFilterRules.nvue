@@ -1,0 +1,1134 @@
+<!-- 商品过滤 -->
+<template>
+	<view class="goods-container-filter">
+		<view class="filter-left">
+			<scroll-view :scroll-y="true" class="filter-left-scroll"
+				:style="{height: getSystemInfo().windowHeight - 50 + 'px',paddingTop:getSystemInfo().statusBarHeight + 'px'}"
+				:show-scrollbar="false">
+				<view class="attr-list" v-for="(genre, index) in attribute_list" :key="index"
+					v-if="genre && genre.list && genre.list.length && genre.label">
+					<view v-if="index == 'type' && curTypName == 'type'" v-for="item in genre.list" class="attr-list">
+						<text class="item-type">{{ item.localized_name }}</text>
+						<text v-for="sub in item.subTypes" :key="sub.key"
+							:class="[sub.isCheck ? 'genre-item-active':'genre-item']"
+							@click="onTypeCheck(sub, item, genre.list)">{{ sub.value }}</text>
+					</view>
+					<text
+						v-if="index == curTypName && !['price','type','status'].includes(index)&& !item.name.includes('_Character')"
+						v-for="item in genre.list" :key="item.localized_name"
+						:class="[item.isCheck ? 'genre-item-active':'genre-item']"
+						@click="onCheck(item,genre.list, genre.label)">{{item.localized_name}}</text>
+
+					<view v-if="curTypName.includes('price') && genre.label === 'app.market.filter.price_range'"
+						class="filter-left-wear">
+						<text class="filter-left-name">{{ i18n.t('app.market.filter.price_range') }}</text>
+						<view class="wear-ran">
+							<input v-model="priceMin" type="text" @input="confirmPrice(genre.list)"
+								:placeholder="i18n.t('app.market.filter.price_lowest')" class="wear-ran-input" />
+							<text class="wear-ran-text">~</text>
+							<input v-model="priceMax" type="text" @input="confirmPrice(genre.list)"
+								:placeholder="i18n.t('app.market.filter.price_highest')" class="wear-ran-input" />
+						</view>
+					</view>
+					<!-- sort -->
+					<view v-if="index === 'sort' && curTypName.includes('sort') && mode == 'inventory'" v-for="item in genre.list"
+						:key="item.localized_name" class="attr-list">
+						<text class="item-type" v-if="item.name == 'time' || item.name == 'price'">{{ i18n.t(item.localized_name) }}</text>
+						<text v-for="sub in item.subItem" :key="sub.value"
+							v-if="item.name == 'time' || item.name == 'price'"
+							:class="[sub.isCheck ? 'genre-item-active' : 'genre-item']"
+							@click="onSortCheck(sub, item, genre.list)">
+							{{ sub.localized_name }}
+						</text>
+					</view>
+					<!-- sort -->
+					<view v-if="index === 'sort' && curTypName.includes('sort') && mode != 'inventory'" v-for="item in genre.list"
+						:key="item.localized_name" class="attr-list">
+						<text class="item-type" v-if="item.name == 'hot' || item.name == 'price'">{{ i18n.t(item.localized_name) }}</text>
+						<text v-for="sub in item.subItem" :key="sub.value"
+							v-if="item.name == 'hot' || item.name == 'price'"
+							:class="[sub.isCheck ? 'genre-item-active' : 'genre-item']"
+							@click="onSortCheck(sub, item, genre.list)">
+							{{ sub.localized_name }}
+						</text>
+					</view>
+
+					<view v-if="['price','wear','sort','status'].includes(curTypName)" class="attr-list">
+						<text v-for="item in genre.list" :key="item.localized_name"
+							:class="[item.isCheck ? 'genre-item-active':'genre-item']"
+							v-if="genre.label.includes(curTypName) && (item.name && item.name.includes('_Character'))"
+							@click="onCheck(item,genre.list,genre.label)">{{i18n.t(item.localized_name)}}</text>
+					</view>
+				</view>
+				<view v-if="curTypName=='date'">
+					<text class="item-type">{{ i18n.t('app.trade.order.date') }}</text>
+					<view class="input-box">
+						<text :class="activePicker=='start'?'date-input active-picker':'date-input'"
+							:style="getStartTextStyle()"
+							@click="openStartTimePicker()">{{startTimeText?startTimeText:i18n.t('app.market.filter.date_start')}}</text>
+						<text class="line">-</text>
+						<text :class="activePicker=='end'?'date-input active-picker':'date-input'"
+							:style="getEndTextStyle()"
+							@click="openEndTimePicker()">{{endTimeText?endTimeText:i18n.t('app.market.filter.date_end')}}</text>
+					</view>
+					<text class="clear-date" @click="clearDate()">{{i18n.t('app.market.filter.clear')}}</text>
+					<u-datetime-picker :show="showStartTime" v-model="startTimestamp" mode="date"
+						@confirm="confirmStartTime($event)" @cancel="closeTimePicker()"></u-datetime-picker>
+					<u-datetime-picker :show="showEndTime" v-model="endTimestamp" mode="date"
+						@confirm="confirmEndTime($event)" @cancel="closeTimePicker()"></u-datetime-picker>
+				</view>
+				<view v-if="curTypName.includes('status') && attribute_list.status" class="attr-list">
+					<text v-for="item in attribute_list.status.list" :key="item.name"
+						:class="[item.isCheck ? 'genre-item-active':'genre-item']"
+						@click="onCheck(item, attribute_list.status.list, attribute_list.status.mode)">
+						{{ i18n.t(item.localized_name) }}
+					</text>
+				</view>
+			</scroll-view>
+		</view>
+		<view class="filter-right">
+			<text class="filter-line" :style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}"></text>
+			<view class="attr-list" v-for="(typ,index) in rightTitleList" :key="typ.mode" @click="changeType(typ)">
+				<text :class="curTypName == typ.mode ? 'attr-text-active':'attr-text'"
+					:style="getLabelStyle(typ)">{{typ.label}}</text>
+			</view>
+		</view>
+		<view class="operate-bottom">
+			<text class="operate-reset-btn" @click="filterReset()">{{i18n.t('app.market.filter.reset')}}</text>
+			<text class="operate-ok-btn" @click="filterOk()">{{i18n.t('app.market.filter.finish')}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import {
+		marketAttributeListApi
+	} from "@/api/modules/market.js";
+	import {
+		getLanguage,
+		getSysParamsCookie
+	} from "@/utils/storage/modules/domain.js";
+
+	export default {
+		props: {
+			tagsBean: {
+				type: Object,
+				default: {}
+			},
+			itemNameBean: {
+				type: String,
+				default: ''
+			},
+			isStatus: {
+				type: Boolean,
+				default: false
+			},
+			isMarket: {
+				type: Boolean,
+				default: false
+			},
+			hideModes: {
+				type: Array,
+				default: () => []
+			},
+			mode: {
+				type: String,
+				default: ''
+			}
+		},
+		data() {
+			var now = new Date();
+			var year = Number(now.getFullYear());
+			var yearFirst = new Date(year, 0, 1).getTime();
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				attribute_list: {},
+				curTypName: 'type',
+				rightTitleList: [],
+				itemName: undefined,
+				tags: {
+					exterior: undefined,
+					type: undefined,
+					itemSet: undefined,
+					rarity: undefined,
+					quality: undefined,
+					price: undefined,
+					priceMin: undefined,
+					priceMax: undefined,
+					asc: undefined,
+					field: undefined,
+				},
+				statusList: undefined,
+				priceMin: undefined,
+				priceMax: undefined,
+				sysParams: {},
+				showStartTime: false,
+				showEndTime: false,
+				startTimeText: undefined,
+				endTimeText: undefined,
+				startTimestamp: yearFirst, // 不再为 undefined
+				endTimestamp: yearFirst,
+				activePicker: null,
+				sortField: undefined, // 排序字段：price/time
+				sortAsc: undefined, // 排序方向：true(升序)/false(降序)
+				isInitData: false,
+				
+
+			};
+		},
+		async created() {
+			this.rightTitleList = this.resetRightTitleList();
+			this.sysParams = getSysParamsCookie();
+
+			try {
+				await this.getmarketAttributeList(); // 等待数据加载完成
+				this.initializeFromProps(); // 在获取数据后初始化props
+			} catch (error) {
+				console.error('Failed to initialize filter:', error);
+			}
+		},
+		methods: {
+			getSystemInfo() {
+				return uni.getSystemInfoSync();
+			},
+
+			// 统一初始化来自 props 的选中状态
+			initializeFromProps() {
+				const {
+					attribute_list
+				} = this;
+				if (!attribute_list || !attribute_list.type) return;
+
+				// 处理 itemNameBean（武器子类型）
+				if (this.itemNameBean && attribute_list.type.list) {
+					attribute_list.type.list.forEach(item => {
+						if (item.subTypes?.length > 0) {
+							item.subTypes.forEach(sub => {
+								if (sub.key == this.itemNameBean) {
+									sub.isCheck = true;
+									this.itemName = this.itemNameBean;
+									if (this.rightTitleList[0]) {
+										this.rightTitleList[0].label = sub.value;
+									}
+								}
+							});
+						}
+					});
+				}
+
+				// 外观 exterior
+				if (this.tagsBean?.exterior && attribute_list.exterior?.list) {
+					attribute_list.exterior.list.forEach(item => {
+						if (item.name === this.tagsBean.exterior) {
+							if (this.rightTitleList[1]) {
+								this.rightTitleList[1].label = item.localized_name;
+							}
+							item.isCheck = true;
+							this.tags.exterior = item.name;
+						}
+					});
+				}
+
+				// quality
+				if (this.tagsBean?.quality && attribute_list.quality?.list) {
+					attribute_list.quality.list.forEach(item => {
+						if (item.name === this.tagsBean.quality) {
+							if (this.rightTitleList[2]) {
+								this.rightTitleList[2].label = item.localized_name;
+							}
+							item.isCheck = true;
+							this.tags.quality = item.name;
+						}
+					});
+				}
+
+				// rarity
+				if (this.tagsBean?.rarity && attribute_list.rarity?.list) {
+					attribute_list.rarity.list.forEach(item => {
+						if (item.name === this.tagsBean.rarity) {
+							if (this.rightTitleList[3]) {
+								this.rightTitleList[3].label = item.localized_name;
+							}
+							item.isCheck = true;
+							this.tags.rarity = item.name;
+						}
+					});
+				}
+
+				// itemSet
+				if (this.tagsBean?.itemSet && attribute_list.itemSet?.list) {
+					attribute_list.itemSet.list.forEach(item => {
+						if (item.name === this.tagsBean.itemSet) {
+							if (this.rightTitleList[4]) {
+								this.rightTitleList[4].label = item.localized_name;
+							}
+							item.isCheck = true;
+							this.tags.itemSet = item.name;
+						}
+					});
+				}
+
+				// 触发响应式更新
+				this.attribute_list = {
+					...this.attribute_list
+				};
+				this.rightTitleList = [...this.rightTitleList];
+			},
+
+			clearDate() {
+				this.$nextTick(() => {
+					this.startTimestamp = undefined;
+					this.endTimestamp = undefined;
+					this.startTimeText = undefined;
+					this.endTimeText = undefined;
+					this.showStartTime = false;
+					this.showEndTime = false;
+				});
+			},
+			confirmStartTime(e) {
+				this.isInitData = true;
+				this.startTimestamp = e.value;
+				const startDate = new Date(e.value);
+				let year = startDate.getFullYear();
+				let month = startDate.getMonth() + 1;
+				let day = startDate.getDate();
+				this.startTimeText = `${year}-${month < 10 ? '0' + month : month}-${day < 10 ? '0' + day : day}`;
+				this.showStartTime = false;
+				if (this.endTimestamp && this.startTimestamp > this.endTimestamp) {
+					uni.$u.toast(this.i18n.t('app.market.filter.message.start_date_error'));
+				}
+			},
+			confirmEndTime(e) {
+				this.isInitData = true;
+				this.endTimestamp = e.value;
+				const endDate = new Date(e.value);
+				let year = endDate.getFullYear();
+				let month = endDate.getMonth() + 1;
+				let day = endDate.getDate();
+				this.endTimeText = `${year}-${month < 10 ? '0' + month : month}-${day < 10 ? '0' + day : day}`;
+				this.showEndTime = false;
+				if (this.startTimestamp && this.startTimestamp > this.endTimestamp) {
+					uni.$u.toast(this.i18n.t('app.market.filter.message.start_date_error'));
+				}
+			},
+			confirmPrice(list) {
+				if (this.priceMin || this.priceMax) {
+					for (let att of list) {
+						att.isCheck = false;
+					}
+					if (
+						this.priceMin &&
+						this.priceMax &&
+						Number(this.priceMin) >= this.sysParams.minPrice &&
+						Number(this.priceMin) <= Number(this.priceMax) &&
+						Number(this.priceMax) <= this.sysParams.maxPrice
+					) {
+						this.rightTitleList.forEach(i => {
+							if (i.mode === this.curTypName) {
+								i.label = this.currencySymbol + this.priceMin + ' - ' + this.currencySymbol + this
+									.priceMax;
+							}
+						});
+					}
+				}
+			},
+			filterReset() {
+				this.priceMin = '';
+				this.priceMax = '';
+				// 新增：重置排序状态
+				this.sortField = undefined;
+				this.sortAsc = undefined;
+
+				let cachedList = uni.getStorageSync('schema_tags_730');
+				this.attribute_list = cachedList[getLanguage()];
+				this.tags = {
+					exterior: undefined,
+					type: undefined,
+					itemSet: undefined,
+					rarity: undefined,
+					quality: undefined,
+					price: undefined,
+					priceMin: undefined,
+					priceMax: undefined,
+					asc: undefined,
+					field: undefined
+				};
+				this.isInitData = false;
+				this.startTimestamp = undefined;
+				this.endTimestamp = undefined;
+				this.startTimeText = undefined;
+				this.endTimeText = undefined;
+				this.showStartTime = false;
+				this.showEndTime = false;
+				this.tags.statusList = undefined;
+				this.itemName = undefined;
+				this.rightTitleList = this.resetRightTitleList();
+				if (this.isMarket) {
+					this.$emit('reset');
+				}
+				this.$forceUpdate()
+			},
+			resetRightTitleList() {
+				let list = [{
+						label: i18n.t('app.market.csgo.type'),
+						mode: 'type'
+					},
+					{
+						label: i18n.t('app.market.filter.appearance'),
+						mode: 'exterior'
+					},
+					{
+						label: i18n.t('app.market.csgo.category'),
+						mode: 'quality'
+					},
+					{
+						label: i18n.t('app.market.csgo.quality'),
+						mode: 'rarity'
+					},
+					{
+						label: i18n.t('app.user.collection.text'),
+						mode: 'itemSet'
+					},
+					{
+						label: i18n.t('app.market.filter.price_range'),
+						mode: 'price'
+					},
+					{
+						label: i18n.t('app.trade.order.status'),
+						mode: 'status'
+					},
+					{
+						label: i18n.t('app.market.filter.sort'),
+						mode: 'app.market.filter.sort'
+					},
+					{
+						label: i18n.t('app.trade.order.date'),
+						mode: 'date'
+					},
+				].filter(item => !this.hideModes.includes(item.mode)); // 关键过滤
+
+				if (!this.isStatus) {
+					list = list.filter(item => !['status', 'date'].includes(item.mode));
+				}
+				return list;
+			},
+			filterOk() {
+				if (this.priceMin && this.priceMax) {
+					this.tags.priceMin = this.priceMin;
+					this.tags.priceMax = this.priceMax;
+				}
+				// 组装完整的筛选参数
+				const filterParams = {
+					itemName: typeof this.itemName === 'string' && !this.itemName.includes('Unlimited') ?
+						this.itemName : undefined,
+					tags: this.tags,
+					statusList: (Array.isArray(this.statusList) && this.statusList.length) ? this.statusList : [-2, -1,
+						1, 3, 4, 5, 6, 9
+					],
+					startTime: this.isInitData ? (this.startTimestamp ? Math.floor(this.startTimestamp / 1000) :
+						undefined) : undefined,
+					endTime: this.isInitData ? (this.endTimestamp ? Math.floor(this.endTimestamp / 1000) : undefined) :
+						undefined,
+					sortField: this.sortField, // 新增：排序字段
+					sortAsc: this.sortAsc // 新增：排序方向
+				};
+				this.$emit('filter', filterParams);
+			},
+			onCheck(item, list, label) {
+				list.forEach(att => {
+					att.isCheck = att.name === item.name ? !att.isCheck : false;
+					if (att.name === item.name) {
+						if (!['price'].includes(this.curTypName)) {
+							if (this.curTypName.includes('status')) {
+								this.statusList = att.isCheck ? item.value : undefined;
+							} else {
+								this.tags[this.curTypName] = att.isCheck ? item.name : undefined;
+							}
+						} else {
+							if (att.isCheck) {
+								if (item.localized_name === 'app.market.filter.below') {
+									this.tags.priceMin = this.sysParams.minPrice;
+									this.tags.priceMax = 500;
+								} else if (item.localized_name === 'app.market.filter.between') {
+									this.tags.priceMin = 501;
+									this.tags.priceMax = 5000;
+								} else if (item.localized_name === 'app.market.filter.more_than') {
+									this.tags.priceMin = 5000;
+									this.tags.priceMax = this.sysParams.maxPrice;
+								}
+							}
+						}
+						if (!att.isCheck) {
+							this.updateRightTitle(null);
+							return;
+						}
+						if (!['price', 'status'].includes(this.curTypName)) {
+							let text = item.localized_name !== this.i18n.t('app.common.unlimited') ?
+								item.localized_name :
+								item.localized_name + ' ' + label;
+							this.updateRightTitle(text);
+						} else {
+							this.updateRightTitle(this.i18n.t(item.localized_name));
+						}
+					}
+				});
+				this.attribute_list = {
+					...this.attribute_list
+				};
+			},
+			onTypeCheck(item, subItem, genreList) {
+				genreList.forEach(genre => {
+					if (genre.subTypes && genre.subTypes.length > 0) {
+						genre.subTypes.forEach(sub => {
+							sub.isCheck = sub.key === item.key ? !sub.isCheck : false;
+							if (sub.key === item.key) {
+								this.itemName = sub.isCheck ? item.key : undefined;
+								this.tags.type = sub.isCheck ? subItem.name : undefined;
+								// 武器类型
+								if (!sub.isCheck) {
+									this.updateRightTitle(null);
+									genre.isCheck = false;
+									return;
+								};
+								let text = item.value != this.i18n.t('app.common.unlimited') ?
+									item.value :
+									item.value + ' ' + genre.localized_name;
+								this.updateRightTitle(text);
+								genre.isCheck = true;
+							}
+						});
+					}
+				});
+				this.attribute_list = {
+					...this.attribute_list
+				};
+				console.log('Updated attribute_list:', this.attribute_list);
+			},
+			onSortCheck(item, subItem, genreList) {
+				genreList.forEach(genre => {
+					genre.subItem.forEach(sub => {
+						const isCurrentItem = sub.value === item.value && sub.localized_name === item
+							.localized_name;
+						sub.isCheck = isCurrentItem ? !sub.isCheck : false;
+
+						if (isCurrentItem) {
+							if (sub.isCheck) {
+								// 选中状态 - 记录排序参数
+								this.sortField = genre.name; // price/time
+								this.sortAsc = sub.asc; // true(升序)/false(降序)
+								this.updateRightTitle(
+									`${this.i18n.t(subItem.localized_name)} ${sub.localized_name}`);
+								genre.isCheck = true;
+							} else {
+								// 取消选中 - 清空排序参数
+								this.sortField = undefined;
+								this.sortAsc = undefined;
+								this.updateRightTitle(null);
+								genre.isCheck = false;
+							}
+						}
+					});
+				});
+				this.attribute_list = {
+					...this.attribute_list
+				};
+			},
+			updateRightTitle(label) {
+				const title = this.rightTitleList.find(item => item.mode === this.curTypName);
+				if (!title) return;
+				if (label) {
+					title.label = label;
+				} else {
+					const defaultList = this.resetRightTitleList();
+					const defaultTitle = defaultList.find(item => item.mode === this.curTypName);
+					if (defaultTitle) title.label = defaultTitle.label;
+				}
+				this.$forceUpdate();
+			},
+			changeType(typ) {
+				this.curTypName = typ.mode;
+			},
+			getLabelStyle(title) {
+				const len = title.label.length;
+				if (len >= 18) return {
+					fontSize: '16rpx'
+				};
+				if (len >= 13) return {
+					fontSize: '18rpx'
+				};
+				if (len >= 7 || title.label === 'Type') return {
+					fontSize: '21rpx'
+				};
+				return {
+					fontSize: '26rpx'
+				};
+			},
+			extractAttributes(obj) {
+				// 现在 obj 是 { weapon:{list:[...],label:'武器'}, exterior:{...} }
+				const result = {
+					weapon: {
+						list: [],
+						label: 'Weapon'
+					},
+					exterior: {
+						list: [],
+						label: 'Exterior'
+					},
+					type: {
+						list: [],
+						label: 'Type'
+					},
+					quality: {
+						list: [],
+						label: 'Quality'
+					},
+					rarity: {
+						list: [],
+						label: 'Rarity'
+					},
+					itemSet: {
+						list: [],
+						label: 'Item Set'
+					},
+
+					price: {
+						list: [{}],
+						label: 'app.market.filter.price_range'
+					},
+				};
+
+				// 遍历对象 key：weapon / exterior / ...
+				Object.keys(obj).forEach(key => {
+					const src = obj[key];
+					if (!src || !src.list) return;
+
+					result[key] = {
+						label: src.label,
+						list: src.list.map(it => ({
+							name: it.name,
+							localized_name: it.localized_name,
+							define: it.define || {},
+							color: it.color || '',
+							subTypes: it.subTypes || [],
+							isCheck: false
+						}))
+					};
+				});
+
+				// 加 unlimited（保持你原来逻辑）
+				const i18nUnlimited = this.i18n.t('app.common.unlimited');
+				['weapon', 'exterior', 'itemSet', 'rarity', 'quality'].forEach(attr => {
+					if (result[attr]?.list) {
+						result[attr].list.unshift({
+							define: {},
+							localized_name: i18nUnlimited,
+							name: 'unlimited',
+							isCheck: false
+						});
+					}
+				});
+				result.status = {
+					label: this.i18n.t('app.trade.order.status'),
+					mode: 'app.trade.order.status',
+					list: [{
+							name: 'unlimited',
+							localized_name: 'app.market.filter.all',
+							value: [-2, -1, 1, 3, 4, 5, 6, 9],
+							isCheck: false
+						},
+						{
+							name: 'app.trade.filter.in',
+							localized_name: 'app.trade.filter.in',
+							value: [2, 3, 4],
+							isCheck: false
+						},
+						{
+							name: 'app.trade.filter.failed',
+							localized_name: 'app.trade.filter.failed',
+							value: [-1],
+							isCheck: false
+						},
+						{
+							name: 'app.trade.filter.revoked',
+							localized_name: 'app.trade.filter.revoked',
+							value: [-2],
+							isCheck: false
+						},
+						{
+							name: 'app.trade.filter.settling',
+							localized_name: 'app.trade.filter.settling',
+							value: [5],
+							isCheck: false
+						},
+						{
+							name: 'app.trade.filter.success',
+							localized_name: 'app.trade.filter.success',
+							value: [6],
+							isCheck: false
+						},
+					]
+				};
+				return result;
+			},
+
+			async getmarketAttributeList() {
+				const lang = getLanguage();
+				// 获取缓存cs2 类型：map
+				let mapTypeList = uni.getStorageSync('schema_tags_730') ? uni.getStorageSync('schema_tags_730') : {};
+				if (mapTypeList[lang]) {
+					this.attribute_list = mapTypeList[lang]
+				} else {
+					try {
+						const res = await marketAttributeListApi({
+							appId: 730
+						});
+
+						if (res.code !== 0) {
+							console.error('API returned error:', res);
+							return;
+						}
+
+						const source = res.datas.data || res.datas.list || {};
+						if (!source || typeof source !== 'object') {
+							console.error('Unexpected API structure:', res);
+							return;
+						}
+
+						this.attribute_list = this.extractAttributes(source);
+						
+
+						this.attribute_list.sort = {
+							label: this.i18n.t("app.market.filter.sort"),
+							mode: "app.market.filter.sort",
+							list: [{
+									localized_name: "app.market.filter.time",
+									name: "time",
+									subItem: [{
+											localized_name: "↓",
+											value: "app.market.filter.time_sorting",
+											asc: false,
+										},
+										{
+											localized_name: "↑",
+											value: "app.market.filter.time_sorting",
+											asc: true,
+										},
+									]
+								},{
+									localized_name: "app.market.filter.hot",
+									name: "hot",
+									subItem: [{
+											localized_name: "↓",
+											value: "app.market.filter.hot_sorting",
+											asc: false,
+										},
+										{
+											localized_name: "↑",
+											value: "app.market.filter.hot_sorting",
+											asc: true,
+										},
+									]
+								},
+								{
+									localized_name: "app.market.filter.price",
+									name: "price",
+									subItem: [{
+											localized_name: "↓",
+											value: "app.market.filter.price_sorting",
+											asc: false,
+										},
+										{
+											localized_name: "↑",
+											value: "app.market.filter.price_sorting",
+											asc: true,
+										},
+									]
+								},
+							],
+						};
+
+
+						// 处理 type 列表，确保每个 type 都有 subTypes 数组
+						if (this.attribute_list.type?.list) {
+							this.attribute_list.type.list.forEach(type => {
+								// 确保每个 type 都有 subTypes 数组
+								if (!type.subTypes) {
+									type.subTypes = [];
+								}
+								// 添加 unlimited 选项到 subTypes
+								type.subTypes.unshift({
+									key: type.name + "_Unlimited",
+									value: this.i18n.t('app.common.unlimited'),
+									isCheck: false,
+									localized_name: this.i18n.t('app.common.unlimited'),
+									name: type.name + "_unlimited"
+								});
+							});
+						}
+						mapTypeList[lang] = this.attribute_list
+						uni.setStorageSync('schema_tags_730', mapTypeList);
+						// es_typel-list ==>  中文
+						// es_en..... => 英文
+
+						// schema_tags_730 => {en:[],zh:[]}
+
+					} catch (e) {
+						console.error('Failed to fetch attribute list:', e);
+						// 如果API失败，尝试使用默认空结构
+						this.attribute_list = {
+							weapon: {
+								list: [],
+								label: 'Weapon'
+							},
+							exterior: {
+								list: [],
+								label: 'Exterior'
+							},
+							type: {
+								list: [],
+								label: 'Type'
+							},
+							quality: {
+								list: [],
+								label: 'Quality'
+							},
+							rarity: {
+								list: [],
+								label: 'Rarity'
+							},
+							itemSet: {
+								list: [],
+								label: 'Item Set'
+							},
+							// 添加排序属性
+							sort: {
+								label: this.i18n.t("app.market.filter.sort"),
+								mode: "app.market.filter.sort",
+								list: [{
+										localized_name: "app.market.filter.time",
+										name: "time",
+										subItem: [{
+												localized_name: "↓",
+												value: "app.market.filter.time_sorting",
+												asc: false,
+											},
+											{
+												localized_name: "↑",
+												value: "app.market.filter.time_sorting",
+												asc: true,
+											},
+										]
+									},
+									{
+										localized_name: "app.market.filter.price",
+										name: "price",
+										subItem: [{
+												localized_name: "↓",
+												value: "app.market.filter.price_sorting",
+												asc: false,
+											},
+											{
+												localized_name: "↑",
+												value: "app.market.filter.price_sorting",
+												asc: true,
+											},
+										]
+									},
+								],
+							}
+						};
+					}
+					this.$forceUpdate();
+				}
+			},
+			getStartTextStyle() {
+				if (this.startTimeText && this.startTimeText.length > 0) {
+					return {
+						color: '#4e4e4e'
+					}
+				}
+				return {
+					color: '#888'
+				}
+			},
+			getEndTextStyle() {
+				if (this.endTimeText && this.endTimeText.length > 0) {
+					return {
+						color: '#4e4e4e'
+					}
+				}
+				return {
+					color: '#888'
+				}
+			},
+			openStartTimePicker() {
+				this.showStartTime = true;
+				this.activePicker = 'start';
+			},
+			openEndTimePicker() {
+				this.showEndTime = true;
+				this.activePicker = 'end';
+			},
+			closeTimePicker() {
+				this.showStartTime = false;
+				this.showEndTime = false;
+				this.activePicker = null;
+			}
+		}
+	};
+</script>
+<style scoped lang="scss">
+	@import "../../theme.scss";
+
+	.goods-container-filter {
+		width: 650rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.filter-left {
+		width: 500rpx;
+		background-color: $app-background;
+
+
+		.filter-back {
+			width: 500rpx;
+			height: 66px;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.icons {
+				width: 50rpx;
+				padding-left: 10rpx;
+			}
+
+			.title {
+				width: 450rpx;
+				color: $app-background-black;
+				font-size: $font-size-md;
+				text-align: center;
+			}
+		}
+
+		.filter-left-scroll {
+			width: 500rpx;
+		}
+
+		.item-type {
+			width: 500rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: #3c6fbb;
+			margin: 10rpx;
+			font-size: $font-size-sml;
+			padding: 0 10rpx;
+		}
+
+		.wear-ran {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			justify-content: center;
+			align-items: center;
+
+			.wear-ran-input {
+				width: 150rpx;
+				padding: 10rpx;
+				font-size: $font-size-sm;
+				color: $app-text-primary;
+				border-bottom: 1rpx solid $app-link;
+				text-align: center;
+			}
+
+			.wear-ran-text {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				margin: 0 10rpx;
+			}
+		}
+
+		.input-box {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0 10rpx;
+
+			.date-input {
+				width: 180rpx;
+				text-align: center;
+				padding: 15rpx 20rpx;
+				font-size: $font-size-sml;
+				background: $app-surface-elevated;
+				border: 2rpx solid $app-divider;
+			}
+
+			.active-picker {
+				border: 2rpx solid #3c6fbb;
+			}
+		}
+
+		.clear-date {
+			width: 100rpx;
+			color: #3c6fbb;
+			font-size: $font-size-sml;
+			text-align: center;
+			margin: 20rpx 10rpx;
+			padding: 10rpx 15rpx;
+			border: 1rpx solid #3c6fbb;
+		}
+
+		.attr-list {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+
+			.genre-item-active {
+				width: 228rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-background;
+				text-align: center;
+				font-size: $font-size-sml;
+				background-color: #b38f55;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+
+			.genre-item {
+				width: 228rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-text-thirdly;
+				text-align: center;
+				font-size: $font-size-sm;
+				border: 1rpx solid $app-surface-elevated;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+		}
+	}
+
+	.title {
+		font-size: $font-size-md;
+		color: $app-text-primary;
+		text-align: left;
+		margin: 20rpx 0 10rpx;
+		padding-left: 20rpx;
+	}
+
+	.price-selector {
+		width: 500rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+
+		.span-symbol {
+			margin: 0 30rpx;
+		}
+
+		.price-input {
+			width: 200rpx;
+			font-size: $font-size-sml;
+			background: $app-surface-elevated;
+			border-radius: 3rpx;
+			text-align: center;
+			padding: 10rpx;
+			border: 1rpx solid $app-divider;
+		}
+	}
+
+
+	.filter-right {
+		width: 150rpx;
+		background: $app-surface;
+
+		.filter-line {
+			width: 150rpx;
+			height: 44px;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text-active {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sml;
+			color: $app-link;
+			background: $app-background;
+			border-top: 1rpx solid $app-surface-elevated;
+			border-bottom: 1rpx solid $app-surface-elevated;
+			border-left: 1rpx solid $app-background;
+		}
+
+		.attr-text-check {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sml;
+			color: $app-link;
+			border-left: 1rpx solid $app-background;
+		}
+	}
+
+	.operate-bottom {
+		width: 650rpx;
+		height: 50px;
+		display: flex;
+		flex-direction: row;
+		background-color: $app-background;
+
+		.operate-reset-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: #3c404e;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+
+		.operate-ok-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: $app-link;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+	}
+
+	.filter-left-name {
+		width: 500rpx;
+		color: $app-text-primary;
+		font-size: $font-size-md;
+		padding: 20rpx;
+	}
+</style>

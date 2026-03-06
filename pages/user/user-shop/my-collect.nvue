@@ -1,0 +1,113 @@
+<template>
+	<view class="collect-container">
+		<u-tabs :current="currentTab" @click="handleTabClick" :list="tabs"
+			:style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}" :activeStyle="{
+				fontSize:'24rpx',
+			    color: '#2a2a2a',
+				fontWeight:'bold'
+			}" :inactiveStyle="{
+				fontSize:'24rpx',
+			    color: '#888',
+			}" itemStyle="padding:10rpx 20rpx;height: 24px;" lineHeight="0">
+			<view slot="left" style="padding-left: 10rpx;">
+				<u-icon name="arrow-left" size="16" color="#4a4a4a" bold @click="navigateBack()"></u-icon>
+			</view>
+			<view slot="right" style="padding-right: 20rpx;">
+				<game-switcher @gameChange="appidChange($event)"></game-switcher>
+			</view>
+		</u-tabs>
+		<swiper :style="{height:getSystemInfo().windowHeight- 44 - getSystemInfo().statusBarHeight + 'px'}"
+			:current="currentTab" :duration="300" @change="handleSwiperChange" class="swiper-box">
+			<swiper-item>
+				<product-collect ref="collectRef"></product-collect>
+			</swiper-item>
+			<swiper-item>
+				<product-focus ref="focusRef"></product-focus>
+			</swiper-item>
+		</swiper>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ProductFocus from '@/components/shop/product-market/ProductFocus.nvue';
+	import ProductCollect from '@/components/shop/product-market/ProductCollect.nvue';
+	import GameSwitcher from '@/components/layout/GameSwitcher.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		components: {
+			ProductFocus,
+			ProductCollect,
+			GameSwitcher
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currentTab: 0,
+				tabs: [{
+						name: i18n.t('app.user.collection.category'),
+						value: "collect"
+					},
+					{
+						name: i18n.t('app.user.collection.single'),
+						value: "focus"
+					}
+				],
+			}
+		},
+		mounted() {
+			uni.$once("refresh-collect", (data) => {
+				if (data.refresh&&this.$refs.collectRef) {
+					this.$refs.collectRef.refresh();
+				}
+			});
+		},
+		methods: {
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			navigateBack() {
+				uni.navigateBack();
+			},
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			handleTabClick(e) {
+				this.currentTab = e.index;
+			},
+			/**
+			 * 滑动切换tabs
+			 * @param {Object} e
+			 */
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+				this.checkAppid();
+			},
+			checkAppid() {
+				if (this.currentTab == 0 && this.$refs.collectRef) {
+					this.$refs.collectRef.checkAppid();
+				}
+				if (this.currentTab == 1 && this.$refs.focusRef) {
+					this.$refs.focusRef.checkAppid();
+				}
+			},
+			appidChange() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.checkAppid();
+				}
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	.collect-container {
+		width: 750rpx;
+	}
+</style>

@@ -1,0 +1,141 @@
+<template>
+	<view class="container">
+		<!-- 顶部Tab栏 -->
+		<MarketNavbar ref="marketNavbar" v-model="currentTab" :list="tabs" @change="handleTabClick($event)"
+			@appid="appidChange($event)"></MarketNavbar>
+		<!-- 滑动容器 -->
+		<swiper :current="currentTab" :duration="300" @change="handleSwiperChange($event)" class="swiper-box">
+			<swiper-item>
+				<new-arrival-list ref="newArrivalList" @marketTab="marketTab($event)"></new-arrival-list>
+			</swiper-item>
+			<swiper-item>
+				<hot-items ref="hotItems"></hot-items>
+			</swiper-item>
+		</swiper>
+		<version-update></version-update>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import VersionUpdate from '@/components/update/VersionUpdate.nvue';
+	import MarketNavbar from '@/components/layout/MarketNavbar.nvue';
+	import NewArrivalList from '@/components/shop/product-market/NewArrivalList.nvue';
+	import HotItems from '@/components/shop/product-market/HotItems.nvue';
+	import GameMarket from '@/components/shop/product-market/GameMarket.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+
+
+	export default {
+		components: {
+			VersionUpdate,
+			MarketNavbar,
+			NewArrivalList,
+			HotItems,
+		},
+		data() {
+			return {
+				currentTab: 0,
+				tabs: [{
+						name: i18n.t('app.market.latest'),
+						value: 'new-arrival-list'
+					},
+					{
+						name: i18n.t('app.market.popular'),
+						value: 'hot-items'
+					}
+				],
+				isLogin: isLogin()
+			}
+		},
+		onShow() {
+			// 通知自定义导航栏切换游戏
+			uni.$emit('app-navbar-appid');
+			this.checkAppid()
+			if (this.isLogin != isLogin()) {
+				this.isLogin = isLogin();
+				this.checkAppid()
+			}
+		},
+		created() {
+			this.initTab();
+		},
+		methods: {
+			initTab() {
+				uni.setTabBarItem({
+					index: 0,
+					text: i18n.t('app.tabbar.home'),
+				})
+				uni.setTabBarItem({
+					index: 1,
+					text: i18n.t('app.tabbar.inventory'),
+				})
+				uni.setTabBarItem({
+					index: 2,
+					text: i18n.t('app.tabbar.sell'),
+				})
+				uni.setTabBarItem({
+					index: 3,
+					text: i18n.t('app.tabbar.mine'),
+				})
+			},
+			/**
+			 * 检查切换tab是否需要刷新页面
+			 */
+			checkAppid() {
+				try {
+					if (this.currentTab == 0 && this.$refs.newArrivalList) {
+						this.$refs.newArrivalList.checkAppid();
+					}
+					if (this.currentTab == 1 && this.$refs.hotItems) {
+						this.$refs.hotItems.checkAppid();
+					}
+				} catch (e) {
+					console.log(e)
+				}
+
+			},
+			/**
+			 * 切换游戏
+			 * @param {Object} appid
+			 */
+			appidChange(appid) {
+				this.checkAppid();
+			},
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			handleTabClick(e) {
+				this.currentTab = e.index;
+				this.checkAppid();
+			},
+			/**
+			 * 滑动切换tabs
+			 * @param {Object} e
+			 */
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+				this.checkAppid();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import '../theme.scss';
+	.container {
+		flex: 1;
+		background-color: $app-background;
+	}
+
+	.swiper-box {
+		flex: 1;
+		width: 750rpx;
+	}
+</style>

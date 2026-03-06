@@ -1,0 +1,100 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.market.product.receive')" :autoBack="true" leftIconColor="#fff" :titleStyle="{color:'#fff'}" bgColor="#171a21" placeholder></u-navbar>
+		<view class="container">
+			<text class="text">1.{{ i18n.t('app.steam.message.load_error') }}</text>
+			<view class="btn-wrap">
+				<text class="text">2.{{ i18n.t('app.steam.message.load_error_2') }}</text>
+				<button class="refresh-btn" @click="reload()" type="primary" size="mini">{{ i18n.t('app.common.refresh') }}</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	
+	export default {
+		data(){
+			return{
+				i18n: i18n,
+				web: null,
+				src: "https://steamcommunity.com/tradeoffer/"
+			}
+		},
+		onBackPress(options) {
+			if (this.web && options.from == 'navigateBack') {
+				this.close();
+			}
+		},
+		onLoad(options) {
+			if(options.trade_offer_id){
+				this.src += options.trade_offer_id + '/';
+			}
+		},
+		mounted(){
+			this.createWeb();
+		},
+		methods: {
+			createWeb(){
+				let systemInfo = uni.getSystemInfoSync();
+				const page = this.$scope.$getAppWebview();
+				this.web = plus.webview.create('', 'WKWebview',{
+					plusrequire: 'none',
+					kernel: 'WKWebview',
+					'uni-app': 'none',
+					top: systemInfo.statusBarHeight + 108 + 'px',
+					height: systemInfo.windowHeight + 'px',
+					progress: {
+						color: '#74bcff'
+					}
+				});
+				this.web.loadURL(this.src);
+				page.append(this.web);
+				this.web.show();
+			},
+			close() {
+				this.web.close();
+				this.web = null; // 清理引用，防止内存泄漏
+			},
+			reload(){
+				this.close();
+				this.createWeb();
+			}
+		},
+	}
+</script>
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	.container{
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		padding: 20rpx 30rpx;
+		
+		.text{
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+		
+		.btn-wrap{
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+			margin-top: 20rpx;
+		}
+		
+		.refresh-btn{
+			width: 120rpx;
+			height: 40rpx;
+			font-size: $font-size-xs;
+			margin-left: 20rpx;
+			border-radius: 0;
+			background: $app-link;
+			border: 1rpx solid $app-link;
+		}
+	}
+</style>

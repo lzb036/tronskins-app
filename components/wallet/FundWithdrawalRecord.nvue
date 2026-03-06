@@ -1,0 +1,158 @@
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<list-refresh :dataList="list" :total="list.length" height="130" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<view class="fund-flow-item">
+					<view class="flow-header">
+						<text class="flow-number">{{i18n.t('app.trade.order.number') + ':' + item.id}}</text>
+						<text class="flow-time">{{item.statusName}}</text>
+					</view>
+					<view class="flow-wrap">
+						<view>
+							<text class="flow-amount">{{createTime(item)}}</text>
+							<text
+								class="flow-type-name">{{i18n.t('app.user.withdraw.amount')+':' + currencySymbol + item.amount}}</text>
+							<text class="flow-type-name">{{i18n.t('app.user.wallet.address')+':' + item.account}}</text>
+						</view>
+						<u-button @click="cancelWithdrawSubmit(item)" v-if="item.status == 0" type="error" size="mini"
+							:text="i18n.t('app.common.cancel')"></u-button>
+					</view>
+				</view>
+			</template>
+		</list-refresh>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import config from '@/config/index.js'
+	import ListRefresh from '@/components/layout/list-refresh.nvue'
+	import {
+		GetWithdrawRecordApi,
+		CancelWithdrawApi
+	} from '@/api/modules/user.js'
+
+	export default {
+		components: {
+			ListRefresh
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				list: [],
+				pager: {
+					page: 1,
+					pageSize: 20,
+				},
+				isLoading: false,
+			}
+		},
+		created() {
+			this.getQueryList();
+		},
+		methods: {
+			createTime(item) {
+				return uni.$u.timeFormat(item.createTime, 'yyyy-mm-dd hh:MM:ss');
+			},
+			async getQueryList() {
+				let params = {
+					page: this.pager.page,
+					pageSize: this.pager.pageSize
+				}
+				const res = await GetWithdrawRecordApi(params);
+				if (res.code == 0) {
+					this.list = this.list.concat(res.datas.list);
+				}
+			},
+			cancelWithdrawSubmit(item) {
+				uni.showModal({
+					content: i18n.t('app.user.withdraw.message.cancel'),
+					confirmText: i18n.t('app.common.confirm'),
+					cancelText: i18n.t('app.common.cancel'),
+					success: async (res) => {
+						if (res.confirm) {
+							const res = await CancelWithdrawApi({
+								id: item.id
+							});
+							if (res.code == 0) {
+								uni.$u.toast(this.i18n.t('app.system.message.success'));
+								this.refresh();
+							}
+						}
+					}
+				});
+			},
+			async refresh() {
+				try {
+					this.isLoading = true;
+					this.list = [];
+					this.pager.page = 1;
+					await this.getQueryList();
+				} catch (e) {
+
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getQueryList();
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.fund-flow-item {
+		width: 750rpx;
+	}
+
+	.flow-header {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		background-color: $app-surface;
+		padding: 15rpx 20rpx;
+
+		.flow-number {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+
+		.flow-time {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.flow-wrap {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		background-color: $app-background;
+		padding: 20rpx;
+
+		.flow-type-name {
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			padding-top: 10rpx;
+		}
+
+		.flow-amount {
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			font-weight: bold;
+
+		}
+	}
+
+	.flow-total {
+		padding: 10rpx 20rpx;
+		font-size: $font-size-md;
+		color: $app-text-primary;
+		text-align: right;
+	}
+</style>

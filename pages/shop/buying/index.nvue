@@ -1,0 +1,178 @@
+<!-- 求购 -->
+<template>
+	<view>
+		<u-tabs :current="currentTab" @click="handleTabClick" :list="tabs"
+			:style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}" :activeStyle="{
+				fontSize:'24rpx',
+			    color: '#2a2a2a',
+				fontWeight:'bold'
+			}" :inactiveStyle="{
+				fontSize:'24rpx',
+			    color: '#888',
+			}" itemStyle="padding:10rpx 20rpx;height: 24px;" lineHeight="0">
+			<view slot="left" style="padding-left: 10rpx;">
+				<u-icon name="arrow-left" size="16" color="#4a4a4a" bold @click="navigateBack()"></u-icon>
+			</view>
+			<view slot="right" class="right-slot">
+				<image v-if="isLogin" class="purchase-setting" src="/static/image/user/icon/purchase-setting.png" mode="aspectFit" @click="toPurchaseSetting"></image>		
+				<view v-if="isLogin" :class="purchaseOnline ? 'green-dot' : 'gray-dot'"></view>
+				<game-switcher @gameChange="appidChange($event)"></game-switcher>
+			</view>
+		</u-tabs>
+		<swiper :style="{height:getSystemInfo().windowHeight- 44 - getSystemInfo().statusBarHeight + 'px'}"
+			:current="currentTab" :duration="300" @change="handleSwiperChange" class="swiper-box">
+			<swiper-item>
+				<my-buying ref="buyingRef" :purchaseOnline="purchaseOnline"></my-buying>
+			</swiper-item>
+			<swiper-item>
+				<buying-record ref="buyingRecordRef"></buying-record>
+			</swiper-item>
+		</swiper>
+	</view>
+</template>
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import MyBuying from '@/components/shop/buying/MyBuying.nvue';
+	import BuyingRecord from '@/components/shop/buying/BuyingRecord.nvue';
+	import GameSwitcher from '@/components/layout/GameSwitcher.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		getAppUserInfo
+	} from '@/utils/storage/modules/user.js';
+	import {
+		GetUserShopInfoApi
+	} from '@/api/modules/shop/shop.js';
+	
+	export default {
+		components: {
+			MyBuying,
+			BuyingRecord,
+			GameSwitcher
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currentTab: 0,
+				tabs: [{
+						name: i18n.t("app.user.menu.purchase"),
+						value: "my-buy"
+					},
+					{
+						name:  i18n.t("app.trade.purchase.record"),
+						value: "buy-history"
+					}
+				],
+				appid: getGameType(),
+				purchaseOnline: false,
+				isLogin: isLogin(),
+			}
+		},
+		created() {
+			this.getShopStatusInfo();
+			uni.$on('purchaseStatusChanged', this.handlePurchaseStatusChanged);
+		},
+		mounted() {
+		},
+		methods: {
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			async getShopStatusInfo() {
+				if (!this.isLogin) return;
+				const uuid = getAppUserInfo().uuid ? getAppUserInfo().uuid : getAppUserInfo().shop.uuid;
+				const res = await GetUserShopInfoApi({
+					uuid: uuid,
+				});
+				if (res.code === 0) {
+					this.purchaseOnline = res.datas?.signWanted;
+				}
+			},
+			navigateBack() {
+				uni.navigateBack();
+			},
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			handleTabClick(e) {
+				this.currentTab = e.index;
+				this.checkAppid();
+			},
+			/**
+			 * 滑动切换tabs
+			 * @param {Object} e
+			 */
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+			},
+			checkAppid() {
+				if (this.currentTab == 0 && this.$refs.buyingRef) {
+					this.$refs.buyingRef.checkAppid();
+				}
+				if (this.currentTab == 1 && this.$refs.buyingRecordRef) {
+					this.$refs.buyingRecordRef.checkAppid();
+				}
+			},
+			appidChange() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.checkAppid();
+				}
+			},
+			toPurchaseSetting() {
+				uni.$u.route('/pages/shop/buying/purchase-setting', {
+					purchaseOnline: this.purchaseOnline
+				});
+			},
+			handlePurchaseStatusChanged(newStatus) {
+				this.purchaseOnline = newStatus;
+			},
+		}
+	}
+</script>
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	
+	.right-slot {
+		padding: 0 8px;
+		flex-direction: row;
+		align-items: center;
+		position: relative;
+
+		.purchase-setting {
+			width: 40rpx;
+			height: 40rpx;
+			margin-right: 20rpx;
+		}
+
+		.green-dot {
+			position: absolute;
+			width: 10rpx;
+			height: 10rpx;
+			left: 54rpx;
+			top: 0rpx;
+			border-radius: 50rpx;
+			text-align: center;
+			background: $app-success-dark;
+			border: 1rpx solid $app-success-dark;
+		}
+		
+		.gray-dot {
+			position: absolute;
+			width: 10rpx;
+			height: 10rpx;
+			left: 54rpx;
+			top: 0rpx;
+			border-radius: 50rpx;
+			text-align: center;
+			background: $app-text-thirdly;
+			border: 1rpx solid $app-text-thirdly;
+		}
+	}
+</style>

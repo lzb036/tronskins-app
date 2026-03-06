@@ -1,0 +1,1113 @@
+<!-- 商品过滤 -->
+<template>
+	<view class="goods-container-filter">
+		<!-- 左侧滚动区 -->
+		<view class="filter-left">
+			<scroll-view :scroll-y="true" class="filter-left-scroll" :show-scrollbar="false" :style="{
+          height: getSystemInfo().windowHeight - 50 + 'px',
+          paddingTop: getSystemInfo().statusBarHeight + 'px'
+        }">
+				<!-- 英雄专属头部 -->
+				<view class="hero-header" v-if="curTypName == 'hero' && attribute_list.hero">
+					<text class="unlimited-btn" @click="unlimitedHero(attribute_list.hero.list)">
+						{{ i18n.t('app.common.unlimited') }}
+					</text>
+				</view>
+
+				<!-- 通用循环：不含 status / date -->
+				<view class="attr-list" v-for="(genre, index) in attribute_list" :key="index">
+					<!-- hero -->
+					<view v-if="index === 'hero' && curTypName.includes('hero')" v-for="item in genre.list"
+						:key="item.label" class="attr-list">
+						<text class="item-type">{{ item.label }}</text>
+						<view class="hero-container">
+							<view v-for="hero in item.list" :key="hero.name"
+								:class="[hero.isCheck ? 'img-item-active' : 'img-item']"
+								@click="onHeroCheck(hero, item, genre.list)">
+								<image class="hero-img" :src="item.base + hero.name + '.jpg'" />
+								<text class="hero-name" :style="getNameStyle(hero.name)">
+									{{ hero.localized_name }}
+								</text>
+							</view>
+						</view>
+					</view>
+
+					<!-- sort -->
+					<view v-if="index === 'sort' && curTypName.includes('sort') && mode == 'inventory'"
+						v-for="item in genre.list" :key="item.localized_name" class="attr-list">
+						<text class="item-type"
+							v-if="item.name == 'time' || item.name == 'price'">{{ i18n.t(item.localized_name) }}</text>
+						<text v-for="sub in item.subItem" :key="sub.value"
+							v-if="item.name == 'time' || item.name == 'price'"
+							:class="[sub.isCheck ? 'genre-item-active' : 'genre-item']"
+							@click="onSortCheck(sub, item, genre.list)">
+							{{ sub.localized_name }}
+						</text>
+					</view>
+					<!-- sort -->
+					<view v-if="index === 'sort' && curTypName.includes('sort') && mode != 'inventory'"
+						v-for="item in genre.list" :key="item.localized_name" class="attr-list">
+						<text class="item-type"
+							v-if="item.name == 'hot' || item.name == 'price'">{{ i18n.t(item.localized_name) }}</text>
+						<text v-for="sub in item.subItem" :key="sub.value"
+							v-if="item.name == 'hot' || item.name == 'price'"
+							:class="[sub.isCheck ? 'genre-item-active' : 'genre-item']"
+							@click="onSortCheck(sub, item, genre.list)">
+							{{ sub.localized_name }}
+						</text>
+					</view>
+
+					<!-- 普通文本项（非 hero / sort / status / date / price） -->
+					<text v-if="
+              curTypName.includes(index) &&
+              !['hero', 'sort', 'status', 'date', 'price'].includes(index)
+            " v-for="item in genre.list" :key="item.localized_name"
+						:class="[item.isCheck ? 'genre-item-active' : 'genre-item']"
+						@click="onCheck(item, genre.list, genre.mode)">
+						{{ item.localized_name }}
+					</text>
+
+				</view>
+				<!-- 价格区间：独立渲染 -->
+				<view v-if="curTypName.includes('price')" class="attr-list">
+					<text class="item-type">{{ i18n.t('app.market.filter.price_range') }}</text>
+					<view class="price-selector">
+						<input v-model="priceMin" class="price-input" type="digit" inputmode="decimal"
+							@input="confirmPrice(attribute_list.price.list)"
+							:placeholder="i18n.t('app.market.filter.price_lowest') + currencySymbol" />
+						<text class="span-symbol">-</text>
+						<input v-model="priceMax" class="price-input" type="digit" inputmode="decimal"
+							@input="confirmPrice(attribute_list.price.list)"
+							:placeholder="i18n.t('app.market.filter.price_highest') + currencySymbol" />
+					</view>
+					<!-- <text class="title">{{ i18n.t('app.market.filter.selection_quick') }}</text> -->
+
+					<!-- 快捷按钮 -->
+					<!-- <text v-for="item in attribute_list.price.list" :key="item.name"
+						:class="[item.isCheck ? 'genre-item-active' : 'genre-item']"
+						@click="onCheck(item, attribute_list.price.list, attribute_list.price.mode)">
+						{{ i18n.t(item.localized_name) }}
+					</text> -->
+				</view>
+				<!-- 订单状态：独立渲染 -->
+				<view v-if="curTypName.includes('status') && attribute_list.status" class="attr-list">
+					<text v-for="item in attribute_list.status.list" :key="item.name"
+						:class="[item.isCheck ? 'genre-item-active' : 'genre-item']"
+						@click="onCheck(item, attribute_list.status.list, attribute_list.status.mode)">
+						{{ i18n.t(item.localized_name) }}
+					</text>
+				</view>
+
+				<!-- 订单日期：独立渲染 -->
+				<view v-if="curTypName.includes('date')">
+					<text class="item-type">{{ i18n.t('app.trade.order.date') }}</text>
+					<view class="input-box">
+						<text :class="activePicker=='start'?'date-input active-picker':'date-input'"
+							:style="getStartTextStyle()"
+							@click="openStartTimePicker()">{{startTimeText?startTimeText:i18n.t('app.market.filter.date_start')}}</text>
+						<text class="line">-</text>
+						<text :class="activePicker=='end'?'date-input active-picker':'date-input'"
+							:style="getEndTextStyle()"
+							@click="openEndTimePicker()">{{endTimeText?endTimeText:i18n.t('app.market.filter.date_end')}}</text>
+					</view>
+					<text class="clear-date" @click="clearDate()">{{i18n.t('app.market.filter.clear')}}</text>
+					<u-datetime-picker :show="showStartTime" v-model="startTimestamp" mode="date"
+						@confirm="confirmStartTime($event)" @cancel="closeTimePicker()"></u-datetime-picker>
+					<u-datetime-picker :show="showEndTime" v-model="endTimestamp" mode="date"
+						@confirm="confirmEndTime($event)" @cancel="closeTimePicker()"></u-datetime-picker>
+				</view>
+			</scroll-view>
+		</view>
+
+		<!-- 右侧导航 -->
+		<view class="filter-right">
+			<text class="filter-line" :style="{ paddingTop: getSystemInfo().statusBarHeight + 'px' }" />
+			<view class="attr-list" v-for="typ in rightTitleList" :key="typ.mode" @click="changeType(typ)">
+				<text :class="curTypName === typ.mode ? 'attr-text-active' : 'attr-text'" :style="getLabelStyle(typ)">
+					{{ typ.label }}
+				</text>
+			</view>
+		</view>
+
+		<!-- 底部按钮 -->
+		<view class="operate-bottom">
+			<text class="operate-reset-btn" @click="filterReset">
+				{{ i18n.t('app.market.filter.reset') }}
+			</text>
+			<text class="operate-ok-btn" @click="filterOk">
+				{{ i18n.t('app.market.filter.finish') }}
+			</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import {
+		marketAttributeListApi,
+		dota2marketAttributeListApi
+	} from "@/api/modules/market.js";
+	import {
+		getLanguage,
+		getSysParamsCookie
+	} from "@/utils/storage/modules/domain.js";
+	import {
+		stringFormat
+	} from '@/utils/str/index.js';
+	const MODE_2_TAG = {
+		'app.market.dota2.hero': 'hero',
+		'app.market.dota2.rarity': 'rarity',
+		'app.market.csgo.quality': 'quality',
+		'app.market.dota2.slot': 'slot',
+		'app.market.dota2.kind': 'type',
+		'app.market.filter.sort': 'sort',
+		'app.market.filter.price_range': 'price',
+		'app.trade.order.status': 'status'
+	};
+	export default {
+		props: {
+			tagsBean: {
+				type: Object,
+				default: {}
+			},
+			isStatus: {
+				type: Boolean,
+				default: false
+			},
+			isMarket: {
+				type: Boolean,
+				default: false
+			},
+			hideModes: {
+				type: Array,
+				default: () => []
+			},
+			mode: {
+				type: String,
+				default: ''
+			}
+		},
+		data() {
+			var now = new Date();
+			var year = Number(now.getFullYear());
+			var yearFirst = new Date(year, 0, 1).getTime();
+			return {
+
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				attribute_list: [],
+				curTypName: 'app.market.dota2.hero',
+				rightTitleList: [],
+				tags: {
+					hero: undefined, // 英雄
+					type: undefined, // 类型
+					slot: undefined, // 插槽
+					quality: undefined, // 品质
+					rarity: undefined, // 稀有度
+					asc: undefined, // 升降序
+					field: undefined, // 热度 价格
+					price: undefined, // 出售价格区间
+					priceMin: undefined, // 最低价格
+					priceMax: undefined, // 最高价格
+				},
+				statusList: undefined, //订单状态
+				priceMin: undefined,
+				priceMax: undefined,
+				sysParams: {},
+				showStartTime: false,
+				showEndTime: false,
+				startTimeText: undefined,
+				endTimeText: undefined,
+				startTimestamp: yearFirst,
+				endTimestamp: yearFirst,
+				activePicker: null,
+				sortField: undefined,
+				sortAsc: undefined,
+				isInitData: false,
+			}
+		},
+		mounted() {
+			this.getmarketAttributeList();
+			this.rightTitleList = this.resetRightTitleList();
+			this.sysParams = getSysParamsCookie();
+		},
+		methods: {
+
+			clearDate() {
+				this.$nextTick(() => {
+					this.startTimestamp = undefined;
+					this.endTimestamp = undefined;
+					this.startTimeText = undefined;
+					this.endTimeText = undefined;
+					this.showStartTime = false;
+					this.showEndTime = false;
+				});
+			},
+			confirmStartTime(e) {
+				this.isInitData = true;
+				this.startTimestamp = e.value;
+				const startDate = new Date(e.value);
+				let year = startDate.getFullYear();
+				let month = startDate.getMonth() + 1;
+				let day = startDate.getDate();
+				this.startTimeText = `${year}-${month<10?'0'+month:month}-${day<10?'0'+day:day}`;
+				this.showStartTime = false;
+				if (this.endTimestamp && this.startTimestamp > this.endTimestamp) {
+					uni.$u.toast(this.i18n.t('app.market.filter.message.start_date_error'));
+				}
+			},
+			confirmEndTime(e) {
+				this.isInitData = true;
+				this.endTimestamp = e.value;
+				const endDate = new Date(e.value);
+				let year = endDate.getFullYear();
+				let month = endDate.getMonth() + 1;
+				let day = endDate.getDate();
+				this.endTimeText = `${year}-${month<10?'0'+month:month}-${day<10?'0'+day:day}`;
+				this.showEndTime = false;
+				if (this.startTimestamp && this.startTimestamp > this.endTimestamp) {
+					uni.$u.toast(this.i18n.t('app.market.filter.message.start_date_error'));
+				}
+			},
+			confirmPrice(list) {
+				if (this.priceMin || this.priceMax) {
+					for (let att of list) {
+						att.isCheck = false;
+					}
+					if (
+						this.priceMin && this.priceMax &&
+						Number(this.priceMin) >= (this.sysParams.minPrice || 0) &&
+						Number(this.priceMin) <= Number(this.priceMax) &&
+						Number(this.priceMax) <= (this.sysParams.maxPrice || Infinity)
+					) {
+						this.rightTitleList.forEach(i => {
+							if (i.mode === this.curTypName) {
+								i.label = this.currencySymbol + this.priceMin + ' - ' + this.currencySymbol + this
+									.priceMax;
+							}
+						});
+					}
+				}
+			},
+			filterReset() {
+				this.priceMin = '';
+				this.priceMax = '';
+				this.sortField = undefined;
+				this.sortAsc = undefined;
+				this.isInitData = false;
+				let cachedList = uni.getStorageSync('schema_tags_570');
+				this.attribute_list = cachedList[getLanguage()] || {};
+
+
+				this.tags = {
+					hero: undefined,
+					type: undefined,
+					slot: undefined,
+					quality: undefined,
+					rarity: undefined,
+					asc: undefined,
+					field: undefined,
+					price: undefined,
+					priceMin: undefined,
+					priceMax: undefined,
+
+				};
+				this.statusList = undefined;
+				this.startTimestamp = undefined;
+				this.endTimestamp = undefined;
+				this.startTimeText = undefined;
+				this.endTimeText = undefined;
+				this.showStartTime = false;
+				this.showEndTime = false;
+				this.rightTitleList = this.resetRightTitleList();
+
+				if (this.isMarket) {
+					this.$emit('reset');
+				}
+				this.$forceUpdate();
+			},
+			// singleCheckReset() {
+			// 	for (let tag in this.tags) {
+			// 		if (this.tags.hasOwnProperty(tag) && !['asc', 'field', 'price', 'priceMin', 'priceMax'].includes(
+			// 				tag)) {
+			// 			this.tags[tag] = undefined;
+			// 		}
+			// 	}
+			// 	this.rightTitleList.forEach(item => {
+			// 		if (!['sort', 'priceRange'].includes(item.mode)) {
+			// 			item.label = this.i18n.t(item.mode);
+			// 		}
+			// 	});
+			// },
+			resetRightTitleList() {
+				let list = [{
+						label: i18n.t('app.market.dota2.hero'),
+						mode: 'app.market.dota2.hero' // 英雄
+					},
+					{
+						label: i18n.t('app.market.dota2.slot'),
+						mode: 'app.market.dota2.slot' // 槽位
+					},
+					{
+						label: i18n.t('app.market.dota2.kind'),
+						mode: 'app.market.dota2.kind' // 种类
+					},
+					{
+						label: i18n.t('app.market.csgo.quality'),
+						mode: 'app.market.csgo.quality' // 品质
+					},
+					{
+						label: i18n.t('app.market.dota2.rarity'),
+						mode: 'app.market.dota2.rarity' // 稀有度
+					},
+
+					{
+						label: i18n.t('app.market.filter.sort'),
+						mode: 'app.market.filter.sort' // 排序
+					},
+					{
+						label: i18n.t('app.market.filter.price_range'),
+						mode: 'app.market.filter.price_range' // 价格区间
+					},
+					{
+						label: i18n.t('app.trade.order.status'),
+						mode: 'app.trade.order.status' // 订单状态
+					},
+					{
+						label: i18n.t('app.trade.order.date'),
+						mode: 'app.trade.order.date' // 订单日期
+					},
+				].filter(item => !this.hideModes.includes(item.mode));
+				if (!this.isStatus) {
+					const charts = ['status', 'date'];
+					charts.forEach(chart => {
+						list = list.filter(item => {
+							return !item.mode.includes(chart);
+						});
+					});
+				}
+				return list;
+			},
+			filterOk() {
+				if (this.priceMin && this.priceMax) {
+					this.tags.priceMin = this.priceMin;
+					this.tags.priceMax = this.priceMax;
+				}
+
+				// 组装完整的筛选参数
+				const filterParams = {
+					itemName: typeof this.itemName === 'string' && !this.itemName.includes('Unlimited') ?
+						this.itemName : undefined,
+					tags: this.tags,
+					statusList: this.statusList,
+					startTime: this.isInitData ? (this.startTimestamp ? Math.floor(this.startTimestamp / 1000) :
+						undefined) : undefined,
+					endTime: this.isInitData ? (this.endTimestamp ? Math.floor(this.endTimestamp / 1000) : undefined) :
+						undefined,
+					sortField: this.sortField,
+					sortAsc: this.sortAsc
+				};
+				console.log(filterParams)
+				this.$emit('filter', filterParams);
+			},
+			onCheck(item, list, label) {
+				list.forEach(att => {
+					att.isCheck = (att.name === item.name) ? !att.isCheck : false;
+
+					if (att.name === item.name) {
+						if (this.curTypName === 'app.trade.order.status') {
+							this.statusList = att.isCheck ? item.value : undefined;
+							this.updateRightTitle(
+								att.isCheck ? this.i18n.t(item.localized_name) : null
+							);
+							return;
+						}
+
+						if (!this.curTypName.includes('price_range')) {
+							if (!['kind', 'status'].includes(this.curTypName)) {
+								const name = item.name !== 'unlimited' ? item.name : undefined;
+								const shortKey = MODE_2_TAG[this.curTypName] || this.curTypName;
+								this.tags[shortKey] = att.isCheck ? name : undefined;
+							} else {
+								if (this.curTypName === 'kind') {
+									this.tags.type = att.isCheck ? item.name : undefined;
+								}
+							}
+						} else {
+							if (att.isCheck) {
+								if (item.localized_name.includes('below')) {
+									this.tags.priceMin = this.sysParams.minPrice;
+									this.tags.priceMax = 500;
+								} else if (item.localized_name.includes('between')) {
+									this.tags.priceMin = 501;
+									this.tags.priceMax = 5000;
+								} else if (item.localized_name.includes('more_than')) {
+									this.tags.priceMin = 5000;
+									this.tags.priceMax = this.sysParams.maxPrice;
+								}
+							}
+						}
+
+						if (!att.isCheck) {
+							this.updateRightTitle(null);
+							return;
+						}
+
+						if (!['price', 'status'].includes(this.curTypName)) {
+							const text =
+								item.localized_name !== this.i18n.t('app.common.unlimited') ?
+								item.localized_name :
+								item.localized_name + ' ' + this.i18n.t(label);
+							this.updateRightTitle(text);
+						} else {
+							this.updateRightTitle(this.i18n.t(item.localized_name));
+						}
+					}
+				});
+
+				this.attribute_list = {
+					...this.attribute_list
+				};
+			},
+			onHeroCheck(item, subItem, genreList) {
+				genreList.forEach(genre => {
+					genre.list.forEach(hero => {
+						hero.isCheck = (hero.name === item.name) ? !hero.isCheck : false;
+						if (hero.name === item.name) {
+							if (!hero.isCheck) {
+								this.updateRightTitle(null);
+								genre.isCheck = false;
+								return;
+							};
+							// this.singleCheckReset();
+							this.tags.hero = item.name ? item.name : undefined;
+							this.updateRightTitle(item.localized_name);
+							genre.isCheck = true;
+						}
+					});
+				});
+				this.attribute_list = {
+					...this.attribute_list
+				};
+			},
+			unlimitedHero(list) {
+				if (list && list.length > 0) {
+					list.forEach(item => {
+						item.list.forEach(hero => {
+							hero.isCheck = false;
+						});
+					});
+					this.tags.hero = undefined;
+					this.updateRightTitle(null);
+					this.attribute_list = {
+						...this.attribute_list
+					};
+				}
+			},
+			onSortCheck(item, subItem, genreList) {
+				genreList.forEach(genre => {
+					genre.subItem.forEach(sub => {
+						const isCurrentItem = sub.value === item.value && sub.localized_name === item
+							.localized_name;
+						sub.isCheck = isCurrentItem ? !sub.isCheck : false;
+
+						if (isCurrentItem) {
+							if (sub.isCheck) {
+								this.sortField = genre.name;
+								this.sortAsc = sub.asc; // true(升序)/false(降序)
+								this.updateRightTitle(
+									`${this.i18n.t(subItem.localized_name)} ${sub.localized_name}`);
+								genre.isCheck = true;
+							} else {
+								// 取消选中 - 清空排序参数
+								this.sortField = undefined;
+								this.sortAsc = undefined;
+								this.updateRightTitle(null);
+								genre.isCheck = false;
+							}
+						}
+					});
+				});
+				this.attribute_list = {
+					...this.attribute_list
+				};
+			},
+			updateRightTitle(label) {
+				if (label) {
+					this.rightTitleList.forEach(i => {
+						if (i.mode == this.curTypName) {
+							i.label = label;
+							this.$forceUpdate();
+						}
+					});
+					return;
+				}
+				let title = this.rightTitleList.find(item => item.mode == this.curTypName);
+				let titlelist = this.resetRightTitleList();
+				title.label = titlelist.find(item => item.mode == this.curTypName).label;
+				this.$forceUpdate();
+			},
+			changeType(typ) {
+				this.curTypName = typ.mode;
+			},
+			getLabelStyle(title) {
+				if (title.label.length >= 13) {
+					return {
+						fontSize: '19rpx'
+					}
+				}
+				if (title.label.length >= 7) {
+					return {
+						fontSize: '21rpx'
+					}
+				} else {
+					return {
+						fontSize: '26rpx'
+					}
+				}
+			},
+			async getmarketAttributeList() {
+				const lang = getLanguage();
+				// 获取缓存cs2 类型：map
+				let mapTypeList = uni.getStorageSync('schema_tags_570') ? uni.getStorageSync('schema_tags_570') : {};
+				if (mapTypeList[lang]) {
+					this.attribute_list = mapTypeList[lang]
+				} else {
+					try {
+						const res = await dota2marketAttributeListApi({
+							appId: 570
+						});
+						if (res.code == 0) {
+							this.getAttributeList(res.datas.data, mapTypeList);
+						}
+					} catch (e) {
+						console.log(e)
+					}
+				}
+			},
+			async getAttributeList(list, mapTypeList) {
+				try {
+					let hero = {};
+					const heroCharts = ["strength", "agility", "intellect", "all"];
+					const heroKeys = ["heroStrength", "heroAgility", "heroIntellect", "heroAll"];
+					// 多语言 key 映射
+					const langKeyMap = {
+						heroStrength: 'app.market.dota2.hero_strength',
+						heroAgility: 'app.market.dota2.hero_agility',
+						heroIntellect: 'app.market.dota2.hero_intellect',
+						heroAll: 'app.market.dota2.hero_all'
+					};
+
+					const heroArr = [];
+					heroKeys.forEach(key => {
+						if (list[key]) {
+							// 关键：把 label 换成正确的多语言字段
+							list[key].label = this.i18n.t(langKeyMap[key]);
+							heroArr.push(list[key]);
+						}
+					});
+					this.attribute_list = {
+						hero: {
+							label: "hero",
+							list: heroArr,
+							mode: "app.market.dota2.hero"
+						}
+					};
+					this.attribute_list.rarity = list["rarity"];
+					this.attribute_list.quality = list["quality"];
+					this.attribute_list.kind = list["type"];
+					this.attribute_list.slot = list["slot"];
+
+
+					this.attribute_list.sort = {
+						label: this.i18n.t("app.market.filter.sort"),
+						mode: "app.market.filter.sort",
+						list: [{
+								localized_name: "app.market.filter.time",
+								name: "time",
+								subItem: [{
+										localized_name: "↓",
+										value: "app.market.filter.time_sorting",
+										asc: false,
+									},
+									{
+										localized_name: "↑",
+										value: "app.market.filter.time_sorting",
+										asc: true,
+									},
+								]
+							}, {
+								localized_name: "app.market.filter.hot",
+								name: "hot",
+								subItem: [{
+										localized_name: "↓",
+										value: "app.market.filter.hot_sorting",
+										asc: false,
+									},
+									{
+										localized_name: "↑",
+										value: "app.market.filter.hot_sorting",
+										asc: true,
+									},
+								]
+							},
+							{
+								localized_name: "app.market.filter.price",
+								name: "price",
+								subItem: [{
+										localized_name: "↓",
+										value: "app.market.filter.price_sorting",
+										asc: false,
+									},
+									{
+										localized_name: "↑",
+										value: "app.market.filter.price_sorting",
+										asc: true,
+									},
+								]
+							},
+						],
+					}
+					this.attribute_list.price = {
+						label: this.i18n.t("app.market.filter.price_range"),
+						mode: "app.market.filter.price_range",
+						list: [{
+								localized_name: this.i18n.t("app.market.filter.below"),
+								name: "app.market.filter.below",
+								value: 500,
+							},
+							{
+								localized_name: this.i18n.t("app.market.filter.between"),
+								name: "app.market.filter.between",
+								value: 501,
+							},
+							{
+								localized_name: this.i18n.t("app.market.filter.more_than"),
+								name: "app.market.filter.more_than",
+								value: 5000,
+							},
+						],
+					}
+					this.attribute_list.status = {
+						label: this.i18n.t("app.trade.order.status"),
+						mode: "app.trade.order.status",
+						list: [{
+								localized_name: "app.market.filter.all",
+								name: "unlimited",
+								value: [-2, -1, 1, 3, 4, 5, 6, 9],
+							},
+							{
+								localized_name: "app.trade.filter.in",
+								name: "app.trade.filter.in",
+								value: [2, 3, 4],
+							},
+							{
+								localized_name: "app.trade.filter.failed",
+								name: "app.trade.filter.failed",
+								value: [-1],
+							},
+							{
+								localized_name: "app.trade.filter.revoked",
+								name: "app.trade.filter.revoked",
+								value: [-2],
+							},
+							{
+								localized_name: "app.trade.filter.settling",
+								name: "app.trade.filter.settling",
+								value: [5],
+							},
+							{
+								localized_name: "app.trade.filter.success",
+								name: "app.trade.filter.success",
+								value: [6],
+							},
+						],
+					}
+					// 订单日期
+					this.attribute_list.date = {
+						label: this.i18n.t("app.trade.order.date"),
+						mode: "app.trade.order.date",
+						list: [] // 日期区间由 picker 处理，无需静态 list
+					}
+					this.attribute_list = this.sortObjectKeys(this.attribute_list);
+					if (this.attribute_list) {
+						const attributes = ['rarity', 'quality', 'kind', 'slot'];
+						attributes.forEach(attr => {
+							if (this.attribute_list[attr]?.list) {
+								this.attribute_list[attr]?.list.unshift({
+									define: {},
+									localized_name: this.i18n.t('app.common.unlimited'),
+									name: "unlimited"
+								});
+							}
+							this.rightTitleList.forEach(title => {
+								if (this.attribute_list[attr] && title.mode.includes(attr)) {
+									this.attribute_list[attr].mode = title.mode;
+								}
+							});
+						});
+						if (!mapTypeList[getLanguage()]) {
+							mapTypeList = {
+								'zh_CN': [],
+								'en_US': []
+							}
+						}
+						mapTypeList[getLanguage()] = this.attribute_list;
+						uni.setStorageSync('schema_tags_570', mapTypeList);
+					}
+					this.$forceUpdate();
+				} catch (error) {
+					console.log(error)
+					//TODO handle the exception
+				}
+
+			},
+			sortObjectKeys(list) {
+				const sortKeys = ["hero", "rarity", "label", "quality", "kind", "slot", "sort", "price", "status"];
+				const sortedObj = {};
+				sortKeys.forEach(key => {
+					sortedObj[key] = list[key];
+				});
+				return sortedObj;
+			},
+			openStartTimePicker() {
+				this.showStartTime = true;
+				this.activePicker = 'start';
+			},
+			openEndTimePicker() {
+				this.showEndTime = true;
+				this.activePicker = 'end';
+			},
+			closeTimePicker() {
+				this.showStartTime = false;
+				this.showEndTime = false;
+				this.activePicker = null;
+			},
+			getStartTextStyle() {
+				if (this.startTimeText && this.startTimeText.length > 0) {
+					return {
+						color: '#4e4e4e'
+					}
+				}
+				return {
+					color: '#888'
+				}
+			},
+			getEndTextStyle() {
+				if (this.endTimeText && this.endTimeText.length > 0) {
+					return {
+						color: '#4e4e4e'
+					}
+				}
+				return {
+					color: '#888'
+				}
+			},
+			getNameStyle(name) {
+				if (name.length > 5) {
+					return {
+						fontSize: '18rpx'
+					}
+				} else {
+					return {
+						fontSize: '22rpx'
+					}
+				}
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync();
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.goods-container-filter {
+		width: 650rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.filter-left {
+		width: 500rpx;
+		background-color: $app-background;
+
+		.hero-header {
+			width: 500rpx;
+			display: flex;
+			align-items: flex-end;
+			justify-content: flex-end;
+			padding: 10rpx 20rpx;
+
+			.unlimited-btn {
+				width: 120rpx;
+				padding: 10rpx;
+				color: $app-link;
+				background: $app-background;
+				font-size: $font-size-md;
+				text-align: center;
+				border: 1px solid $app-link;
+			}
+		}
+
+		.filter-back {
+			width: 500rpx;
+			height: 66px;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.icons {
+				width: 50rpx;
+				padding-left: 10rpx;
+			}
+
+			.title {
+				width: 450rpx;
+				color: $app-background-black;
+				font-size: $font-size-md;
+				text-align: center;
+			}
+		}
+
+		.filter-left-scroll {
+			width: 500rpx;
+		}
+
+		.item-type {
+			width: 500rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-link;
+			margin: 10rpx;
+			font-size: $font-size-md;
+			padding: 0 10rpx;
+		}
+
+		.input-box {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0 10rpx;
+		}
+
+		.line {
+			font-size: $font-size-sm;
+			color: #888;
+		}
+
+		.date-input {
+			width: 180rpx;
+			text-align: center;
+			padding: 15rpx 20rpx;
+			font-size: $font-size-sml;
+			background: $app-surface-elevated;
+			border: 2rpx solid $app-divider;
+			lines: 1;
+		}
+
+		.active-picker {
+			border: 2rpx solid #3c6fbb;
+		}
+
+		.clear-date {
+			width: 100rpx;
+			color: #3c6fbb;
+			font-size: $font-size-sml;
+			text-align: center;
+			margin: 20rpx 10rpx;
+			padding: 10rpx 15rpx;
+			border: 1rpx solid #3c6fbb;
+		}
+
+		.attr-list {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+
+			.genre-item-active {
+				width: 228rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-background;
+				text-align: center;
+				font-size: $font-size-sml;
+				background-color: #b38f55;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+
+			.genre-item {
+				width: 228rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-text-thirdly;
+				text-align: center;
+				font-size: $font-size-sm;
+				border: 1rpx solid $app-surface-elevated;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+		}
+	}
+
+	.hero-container {
+		width: 500rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		padding-left: 10rpx;
+		justify-content: flex-start;
+	}
+
+	.img-item-active {
+		width: 110rpx;
+		height: 100rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		margin: 5rpx;
+		border: 1px solid $app-link;
+		border-radius: 5rpx;
+	}
+
+	.img-item {
+		width: 110rpx;
+		height: 100rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		margin: 5rpx;
+		border: 1px solid $app-surface-elevated;
+		border-radius: 5rpx;
+	}
+
+	.hero-img {
+		width: 110rpx;
+		height: 50rpx;
+		margin-bottom: 10rpx;
+		border-top-left-radius: 10rpx;
+		border-top-right-radius: 10rpx;
+	}
+
+	.hero-name {
+		color: $app-text-thirdly;
+	}
+
+	.price-selector {
+		width: 500rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+
+		.span-symbol {
+			margin: 0 30rpx;
+		}
+
+		.price-input {
+			width: 200rpx;
+			font-size: $font-size-md;
+			background: $app-surface-elevated;
+			border-radius: 3rpx;
+			text-align: center;
+		}
+	}
+
+	.title {
+		font-size: 30rpx;
+		color: $app-text-primary;
+		text-align: left;
+		margin: 20rpx 0 10rpx;
+		padding-left: 20rpx;
+	}
+
+
+	.filter-right {
+		width: 150rpx;
+		background: $app-surface;
+
+		.filter-line {
+			width: 150rpx;
+			height: 44px;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text-active {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			color: $app-link;
+			background: $app-background;
+			border-top: 1rpx solid $app-surface-elevated;
+			border-bottom: 1rpx solid $app-surface-elevated;
+			border-left: 1rpx solid $app-background;
+		}
+
+		.attr-text-check {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			color: $app-link;
+			border-left: 1rpx solid $app-background;
+		}
+	}
+
+	.operate-bottom {
+		width: 650rpx;
+		height: 50px;
+		display: flex;
+		flex-direction: row;
+		background-color: $app-background;
+
+		.operate-reset-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: #3c404e;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+
+		.operate-ok-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: #3b89a5;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+	}
+</style>

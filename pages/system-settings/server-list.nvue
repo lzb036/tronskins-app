@@ -1,0 +1,103 @@
+<!-- 服务器列表 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.setting.server')" :autoBack="true" fixed placeholder right-icon="plus-circle"
+			@rightClick="addServer()"></u-navbar>
+		<u-cell :border="false" v-for="(server,index) in list" :key="index">
+			<text slot="title" class="user-name" @click="change(server)">{{ server }}</text>
+			<u-icon slot="value" name="checkmark" color="#c11f13" v-if="curServer == server"></u-icon>
+			<u-icon @click="deleteServer(index)" slot="value" name="close" color="#888" v-else></u-icon>
+		</u-cell>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		getServerListCookie,
+		setServerListCookie,
+		getServerCookie,
+		setServerCookie,
+	} from '@/utils/storage/modules/domain.js';
+	
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				list: getServerListCookie(),
+				curServer: getServerCookie(),
+			}
+		},
+		methods: {
+			deleteServer(index) {
+				uni.showModal({
+					content: i18n.t('app.user.server.message.confirm_delete'),
+					confirmText: i18n.t('app.common.confirm'),
+					cancelText: i18n.t('app.common.cancel'),
+					success: (res) => {
+						if (res.confirm) {
+							this.list.splice(index, 1);
+							setServerListCookie(this.list);
+						}
+					}
+				});
+			},
+			addServer() {
+				uni.showModal({
+					content: i18n.t('app.user.setting.server_add'),
+					editable: true,
+					placeholderText: i18n.t('app.user.setting.server_ip_placeholder'),
+					confirmText: i18n.t('app.common.confirm'),
+					cancelText: i18n.t('app.common.cancel'),
+					success: (res) => {
+						if (res.confirm) {
+							if (!/https?:\/\//.test(res.content)) {
+								uni.showToast({
+									title: i18n.t('app.user.server.message.address_invalid'),
+									icon: 'none',
+								});
+								return
+							}
+							const hasDifferentServer = this.list.some(url => url == res.content);
+							if (hasDifferentServer) {
+								uni.showToast({
+									title: 'Server address already exists',
+									icon: 'none',
+								});
+								return
+							}
+							let arr = [];
+							arr.push(res.content.endsWith('/') ? res.content : res.content + '/')
+							this.list = this.list.concat(arr)
+							setServerListCookie(this.list)
+						}
+					}
+				});
+			},
+			change(server) {
+				uni.showModal({
+					content: i18n.t('app.user.setting.server_switching_confirm') + server,
+					confirmText: i18n.t('app.common.confirm'),
+					cancelText: i18n.t('app.common.cancel'),
+					success: (res) => {
+						if (res.confirm) {
+							this.curServer = server;
+							setServerCookie(server);
+							plus.runtime.restart();
+						}
+					}
+				});
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.user-name {
+		font-size: $font-size-md;
+		color: $app-text-thirdly;
+		font-weight: bold;
+		padding: 10rpx 0;
+	}
+</style>

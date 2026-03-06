@@ -1,0 +1,493 @@
+<!-- 商品过滤 -->
+<template>
+	<view class="goods-container-filter">
+		<view class="filter-left">
+			<scroll-view :scroll-y="true" class="filter-left-scroll"
+				:style="{height: getSystemInfo().windowHeight - 50 + 'px',paddingTop:getSystemInfo().statusBarHeight + 'px'}"
+				:show-scrollbar="false">
+				<view class="gemstone-containter" v-for="(gemstoneType,index) in gemstoneList" :key="index">
+					<view class="gemstone-list" v-if="gemstoneType.label==mode">
+						<text class="gemstone-title">{{i18n.t(gemstoneType.label)}}</text>
+						<view class="gemstone-list" v-for="(gemstone,indx) in gemstoneType.list" :key="indx">
+							<text v-if="mode=='facetedGemstone'"
+								:class="gemstone.isCheck?'faceted-gemstone gemstone-item-active':'faceted-gemstone'"
+								@click="onCheck(gemstone, gemstoneType.list)">{{gemstone.statInfo}}</text>
+							<text v-if="['engravedGemstone', 'kineticGemstone'].includes(mode)"
+								@click="onCheck(gemstone, gemstoneType.list)"
+								:class="gemstone.isCheck?'gemstone-item gemstone-item-active': 'gemstone-item'">{{gemstone.statInfo}}</text>
+						</view>
+					</view>
+				</view>
+				<view class="filter-left-price" v-if="mode == 'price'">
+					<text class="filter-left-name">{{i18n.t('app.market.filter.price_range')}}</text>
+					<view class="price-ran">
+						<input v-model="priceMin" :placeholder="i18n.t('app.market.filter.price_lowest')" type="digit"
+							class="price-ran-input"></input>
+						<text class="price-ran-text">~</text>
+						<input v-model="priceMax" :placeholder="i18n.t('app.market.filter.price_highest')" type="digit"
+							class="price-ran-input"></input>
+					</view>
+				</view>
+			</scroll-view>
+		</view>
+		<view class="filter-right">
+			<text class="filter-line" :style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}"></text>
+			<view class="attr-list" v-for="(typ,index) in titleList" :key="typ.label" @click="changeType(typ)">
+				<text :class="mode == typ.mode ? 'attr-text-active':'attr-text'"
+					:style="getLabelStyle(typ.label)">{{i18n.t(typ.label)}}</text>
+			</view>
+		</view>
+		<view class="operate-bottom">
+			<text class="operate-reset-btn" @click="filterReset()">{{i18n.t('app.market.filter.reset')}}</text>
+			<text class="operate-ok-btn" @click="filterOk()">{{i18n.t('app.market.filter.finish')}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		marketAttributeListApi
+	} from "@/api/modules/market.js";
+	export default {
+		props: {
+			paintKits: {
+				type: Array,
+				default: () => []
+			},
+			percentageList: {
+				type: Array,
+				default: () => []
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				mode: 'price',
+				titleList: [],
+				gemstoneList: {},
+				priceMin: undefined,
+				priceMax: undefined,
+			}
+		},
+		mounted() {
+			this.init();
+		},
+		methods: {
+			getLabelStyle(label) {
+				if(label&&label.length>4){
+					return{
+						fontSize: '18rpx',
+					}
+				}
+			},
+			onCheck(item, list) {
+				list.forEach(gemstone => {
+					gemstone.isCheck = gemstone.statInfo === item.statInfo ? !gemstone.isCheck : false;
+					if (gemstone.statInfo !== item.statInfo) return;
+					if (gemstone.statInfo === item.statInfo) {
+						if (gemstone.isCheck) {
+							let label = item.statInfo !== this.i18n.t('app.common.unlimited') ? item.statInfo : this.i18n.t(
+								this.mode) + gemstone.statInfo;
+							this.updateTitleList(label);
+						}
+					}
+					if (!gemstone.isCheck) {
+						this.updateTitleList(null);
+						return;
+					}
+				})
+			},
+			updateTitleList(label) {
+				let title = this.titleList.find(item => item.mode == this.mode);
+				if (label) {
+					title.label = label;
+					this.$forceUpdate();
+					return;
+				}
+				title.label = this.i18n.t(this.mode);
+				this.$forceUpdate();
+			},
+			init() {
+				this.getTitleList();
+				this.getGemstoneList();
+			},
+			getGemstoneList() {
+				this.gemstoneList = {
+					"faceted": {
+						label: "facetedGemstone",
+						list: [{
+							borderColor: "rgb(255, 60, 40)",
+							gemType: "Prismatic Gem",
+							imageUrl: "https://cdn.steamstatic.com/apps/570/icons/econ/sockets/gem_color.991870a920f3defab3c5a1b4c77fb747e8dfca1d.png",
+							statInfo: "Reflection's Shade 1",
+							textColor: "rgb(255, 60, 40)"
+						}, {
+							borderColor: "rgb(255, 60, 40)",
+							gemType: "Prismatic Gem",
+							imageUrl: "https://cdn.steamstatic.com/apps/570/icons/econ/sockets/gem_color.991870a920f3defab3c5a1b4c77fb747e8dfca1d.png",
+							statInfo: "Reflection's Shade 2",
+							textColor: "rgb(255, 60, 40)"
+						}]
+					},
+					"engraved": {
+						label: "engravedGemstone",
+						list: [{
+							borderColor: "rgb(255, 60, 40)",
+							gemType: "Prismatic Gem",
+							imageUrl: "https://cdn.steamstatic.com/apps/570/icons/econ/sockets/gem_color.991870a920f3defab3c5a1b4c77fb747e8dfca1d.png",
+							statInfo: "Reflection's Shade 1",
+							textColor: "rgb(255, 60, 40)"
+						}, {
+							borderColor: "rgb(255, 60, 40)",
+							gemType: "Prismatic Gem",
+							imageUrl: "https://cdn.steamstatic.com/apps/570/icons/econ/sockets/gem_color.991870a920f3defab3c5a1b4c77fb747e8dfca1d.png",
+							statInfo: "Reflection's Shade 2",
+							textColor: "rgb(255, 60, 40)"
+						}]
+					},
+					"kinetic": {
+						label: "kineticGemstone",
+						list: [{
+							borderColor: "rgb(255, 60, 40)",
+							gemType: "Prismatic Gem",
+							imageUrl: "https://cdn.steamstatic.com/apps/570/icons/econ/sockets/gem_color.991870a920f3defab3c5a1b4c77fb747e8dfca1d.png",
+							statInfo: "Reflection's Shade",
+							textColor: "rgb(255, 60, 40)"
+						}]
+					}
+				};
+
+				const gemstoneType = ["faceted", "engraved", "kinetic"];
+				gemstoneType.forEach(type => {
+					if (this.gemstoneList[type]?.list) {
+						this.gemstoneList[type]?.list.unshift({
+							borderColor: "rgb(255, 60, 40)",
+							gemType: "unlimited " + type,
+							imageUrl: undefined,
+							statInfo: this.i18n.t(
+								"app.common.unlimited"), // 选中之后列表为 this.i18n.t("app.common.unlimited") + this.i18n.t(type)
+							textColor: "rgb(255, 60, 40)"
+						});
+					}
+				});
+				// console.log(this.gemstoneList)
+			},
+			getTitleList() {
+				this.titleList = [];
+				let list = [{
+					label: i18n.t('app.market.filter.dota2.gemstones_faceted'),
+					mode: 'facetedGemstone'
+				}, {
+					label: i18n.t('app.market.filter.dota2.gemstones_engraved'),
+					mode: 'engravedGemstone'
+				}, {
+					label: i18n.t('app.market.filter.dota2.gemstones_kinetic'),
+					mode: 'kineticGemstone'
+				}, {
+					label: i18n.t('app.market.filter.price_range'),
+					mode: 'price'
+				}];
+				this.titleList = list;
+				this.titleList = list.filter(item=>!item.mode.includes('Gemstone'));
+			},
+			filterReset() {
+				this.priceMin = undefined;
+				this.priceMax = undefined;
+			},
+			filterOk() {
+				this.$emit('filter', {
+					priceMin: this.priceMin,
+					priceMax: this.priceMax,
+				})
+			},
+			changeType(typ) {
+				this.mode = typ.mode;
+			},
+			getSystemInfo() {
+				return uni.getSystemInfoSync();
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+	.goods-container-filter {
+		width: 650rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.filter-left {
+		width: 500rpx;
+		background-color: $app-background;
+
+		.gemstone-containter {
+			width: 500rpx;
+			background-color: $app-background;
+		}
+
+		.gemstone-title {
+			width: 500rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-link;
+			margin: 10rpx;
+			font-size: $font-size-sm;
+			padding: 0 10rpx;
+		}
+
+		.gemstone-list {
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+			align-items: center;
+			justify-content: flex-start;
+		}
+
+		.faceted-gemstone {
+			width: 478rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-text-thirdly;
+			text-align: center;
+			font-size: $font-size-sm;
+			border: 1rpx solid $app-surface-elevated;
+			border-radius: 2rpx;
+			padding: 0 10rpx;
+			margin: 10rpx;
+		}
+
+		.gemstone-item-active {
+			font-size: $font-size-sml;
+			background-color: #b38f55;
+		}
+
+		.gemstone-item {
+			width: 228rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-text-thirdly;
+			text-align: center;
+			font-size: $font-size-sm;
+			border: 1rpx solid $app-surface-elevated;
+			border-radius: 2rpx;
+			padding: 0 10rpx;
+			margin: 10rpx;
+		}
+
+		.filter-left-name {
+			width: 500rpx;
+			color: $app-text-primary;
+			font-size: $font-size-md;
+			padding: 20rpx;
+		}
+
+		.filter-left-input {
+			background-color: $app-surface;
+			margin: 10rpx 20rpx;
+			padding: 10rpx;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+		}
+
+		.filter-left-price {
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+
+			.price-ran {
+				width: 500rpx;
+				display: flex;
+				flex-direction: row;
+				justify-content: center;
+				align-items: center;
+
+				.price-ran-input {
+					width: 150rpx;
+					padding: 10rpx;
+					font-size: $font-size-sm;
+					color: $app-text-primary;
+					border-bottom: 1rpx solid #3c6fbb;
+				}
+
+				.price-ran-text {
+					font-size: $font-size-sm;
+					color: $app-text-thirdly;
+					margin: 0rpx 10rpx;
+				}
+			}
+
+			.price-item {
+				width: 230rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-text-thirdly;
+				text-align: center;
+				font-size: $font-size-sm;
+				border: 1rpx solid $app-surface-elevated;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+
+			.price-item-active {
+				width: 230rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-background;
+				text-align: center;
+				font-size: $font-size-sml;
+				background-color: #b38f55;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+		}
+
+		.filter-back {
+			width: 500rpx;
+			height: 66px;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.icons {
+				width: 50rpx;
+				padding-left: 10rpx;
+			}
+
+			.title {
+				width: 450rpx;
+				color: $app-background-black;
+				font-size: $font-size-lg;
+				text-align: center;
+			}
+		}
+
+		.filter-left-scroll {
+			width: 500rpx;
+		}
+
+		.attr-list {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			flex-wrap: wrap;
+
+			.item-type {
+				width: 500rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-link;
+				margin: 10rpx;
+				font-size: $font-size-sml;
+				padding: 0 10rpx;
+			}
+
+			.genre-item-active {
+				width: 228rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-background;
+				text-align: center;
+				font-size: $font-size-sml;
+				background-color: #b38f55;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+
+			.genre-item {
+				width: 228rpx;
+				height: 60rpx;
+				line-height: 60rpx;
+				color: $app-text-thirdly;
+				text-align: center;
+				font-size: $font-size-sm;
+				border: 1rpx solid $app-surface-elevated;
+				border-radius: 2rpx;
+				padding: 0 10rpx;
+				margin: 10rpx;
+			}
+		}
+	}
+
+	.filter-right {
+		width: 150rpx;
+		background: $app-surface;
+
+		.filter-line {
+			width: 150rpx;
+			height: 44px;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sm;
+			color: $app-text-primary;
+			border-left: 1rpx solid $app-surface-elevated;
+		}
+
+		.attr-text-active {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sml;
+			color: $app-link;
+			background: $app-background;
+			border-top: 1rpx solid $app-surface-elevated;
+			border-bottom: 1rpx solid $app-surface-elevated;
+			border-left: 1rpx solid $app-background;
+		}
+
+		.attr-text-check {
+			width: 150rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			font-size: $font-size-sml;
+			color: $app-link;
+			border-left: 1rpx solid $app-background;
+		}
+	}
+
+	.operate-bottom {
+		width: 650rpx;
+		height: 50px;
+		display: flex;
+		flex-direction: row;
+		background-color: $app-background;
+
+		.operate-reset-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: #3c404e;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+
+		.operate-ok-btn {
+			width: 275rpx;
+			height: 60rpx;
+			line-height: 60rpx;
+			color: $app-background;
+			font-size: $font-size-sm;
+			background-color: #3b89a5;
+			margin: 25rpx;
+			text-align: center;
+			border-radius: 5rpx;
+		}
+	}
+</style>

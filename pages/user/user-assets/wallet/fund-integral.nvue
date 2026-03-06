@@ -1,0 +1,62 @@
+<!-- 积分明细 -->
+<template>
+	<view class="wallet-container">
+		<u-tabs :current="currentTab" :list="tabs"
+			:style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}" :activeStyle="{
+					fontSize:'24rpx',
+				    color: '#2a2a2a',
+					fontWeight:'bold'
+				}" :inactiveStyle="{
+					fontSize:'24rpx',
+				    color: '#888',
+				}" itemStyle="padding:10rpx 20rpx;height: 24px;" lineHeight="0">
+			<view slot="left" style="padding-left: 10rpx;">
+				<u-icon name="arrow-left" size="16" color="#4a4a4a" bold @click="navigateBack()"></u-icon>
+			</view>
+		</u-tabs>
+		<swiper :style="{height:getSystemInfo().windowHeight- 44 - getSystemInfo().statusBarHeight + 'px'}"
+			:current="currentTab" :duration="300" class="swiper-box">
+			<swiper-item>
+				<fund-points-record></fund-points-record>
+			</swiper-item>
+		</swiper>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import FundPointsRecord from '@/components/wallet/FundPointsRecord.nvue';
+
+	export default {
+		components: {
+			FundPointsRecord
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				currentTab: 0,
+				tabs: [{
+					name: i18n.t('app.user.wallet.integral_details'),
+					value: "account-detail"
+				}],
+			}
+		},
+		methods: {
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			navigateBack() {
+				uni.navigateBack();
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.wallet-container {
+		width: 750rpx;
+	}
+</style>

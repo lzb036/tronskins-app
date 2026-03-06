@@ -1,0 +1,462 @@
+<!-- 批量购买 -->
+<template>
+	<view class="buyying-container">
+		<u-navbar :title="i18n.t('app.market.detail.bulk_buying.title')" :autoBack="true" placeholder></u-navbar>
+		<view class="buyying-item-header">
+			<base-item :imageUrl="item.image_url" :width="180" :num="item.nums"></base-item>
+			<view class="header-title">
+				<text class="market-name">{{item.market_name}}</text>
+				<text
+					class="reference-price">{{i18n.t('app.market.detail.sale_lowest') +':' + currencySymbol + ' '+ item.sell_min}}</text>
+				<text
+					class="reference-price">{{i18n.t('app.market.detail.purchase_highest') +':' + currencySymbol + ' '+ item.buy_max}}</text>
+			</view>
+		</view>
+		<view class="purchase-type"
+			v-if="item.appid != 440&&(showPaintKits||!['CSGO_Type_WeaponCase', 'Type_CustomPlayer','CSGO_Tool_Sticker'].includes(goodsType))"
+			@click="toFilter()">
+			<text class="label">{{i18n.t('app.market.filter.text')}}</text>
+			<text class="value">{{ tags? showTags : i18n.t('app.common.unlimited')}}</text>
+			<u-icon name="arrow-right" color="#888" size="14"></u-icon>
+		</view>
+		<view class="purchase-price">
+			<text class="label">{{i18n.t('app.market.detail.bulk_buying.price_highest')}}</text>
+			<input class="price-input" v-model="buyPrice" type="digit" inputmode="decimal" @input="checkPrice"
+				:placeholder="i18n.t('app.trade.buy.price_placeholder')" @blur="getOnSaleList"></input>
+		</view>
+		<view class="purchase-price">
+			<text class="label">{{i18n.t('app.trade.buy.quantity')}}</text>
+			<input class="price-input-num" v-model="buyNum" type="digit" inputmode="decimal" @input="checkNum" 
+			:placeholder="i18n.t('app.trade.buy.num_placeholder')"></input>
+			<text class="price-num-label">{{list.length + i18n.t('app.market.detail.bulk_buying.match')}}</text>
+		</view>
+		<view class="select-content">
+			<view class="select-left">
+				<text class="select-label">{{i18n.t('app.market.price_total')}}</text>
+				<text class="select-value">{{currencySymbol}}&nbsp;{{total}}</text>
+			</view>
+			<view class="select-right">
+				<text class="up-shop-btn" @click="buyShopSubmit()">{{i18n.t('app.trade.buy.text')}}</text>
+			</view>
+		</view>
+		<u-popup :show="show" @close="show=false" mode="right">
+			<SortPaintKitsFilter :show="show" :appid="item.appid" :schemaId="item.schema_id" :exteriorKey="exteriorKey"  style="width: 680rpx;" :showPaintKits="showPaintKits"
+				:paintKits="paintKits" @submit="handleFilterSubmit" @close="show=false"></SortPaintKitsFilter>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import config from '@/config/index.js';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import SortPaintKitsFilter from '@/components/layout/SortPaintKitsFilter.nvue';
+	import {
+		OrderItemBatchBuyApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		GameItemOnSaleList2Api
+	} from '@/api/modules/market.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+
+	export default {
+		components: {
+			BaseItem,
+			SortPaintKitsFilter
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				item: {
+					appid: '',
+					schema_id: '',
+					image_url: '',
+					market_name: '',
+					sell_min: '',
+					sell_max: '',
+					buy_min: '',
+					buy_max: '',
+					reference_price: ''
+				},
+				buyPrice: '',
+				buyNum: '',
+				list: [],
+				userId: getAppUserInfo().id,
+				paintKits: undefined,
+				tags: undefined,
+				showTags: undefined,
+				goodsType: undefined,
+				show: false,
+				exteriorKey: ''
+			}
+		},
+		onLoad(options) {
+			this.item.appid = options.appid;
+			console.log(this.item.appid)
+			this.item.schema_id = options.schema_id;
+			this.item.image_url = options.image_url;
+			this.item.market_name = options.market_name;
+			this.item.sell_min = options.sell_min;
+			this.item.sell_max = options.sell_max;
+			this.item.buy_min = options.buy_min;
+			this.item.buy_max = options.buy_max;
+			this.item.reference_price = options.reference_price;
+			this.goodsType = options.goodsType;
+			this.showPaintKits = !!(options.showPaintKits==='false'?false:true);
+			this.exteriorKey = options.exteriorKey || '';
+			if (options.paintKits&&this.showPaintKits) {
+				this.paintKits = JSON.parse(decodeURIComponent(options.paintKits));
+			}
+			this.getOnSaleList();
+		},
+		computed: {
+			total() {
+				if (!this.list || this.list.length == 0) {
+					return '0.00';
+				}
+				let total = 0;
+				if (this.list.length > 0) {
+					let arr = this.list.slice(0, Number(this.buyNum));
+					arr.forEach(item => {
+						total += item.price;
+					})
+				}
+				return Math.floor(total * 100) / 100;
+			}
+		},
+		methods: {
+			checkPrice(e) {
+				let decimal = e.detail.value.split(".");
+				if (!decimal) return;
+				if (decimal[1] && decimal[1].length > 2) {
+					this.$nextTick(() => {
+						this.buyPrice = Math.floor(e.detail.value * 100) / 100;
+						uni.$u.toast(this.i18n.t('app.market.detail.bulk_buying.price_decimal_error'));
+						return;
+					});
+				}
+			},
+			checkNum(e) {
+				if (e.detail.value.includes(".")) {
+					let decimal = e.detail.value.split(".");
+					this.$nextTick(() => {
+						this.buyNum = decimal[0];
+						uni.$u.toast(this.i18n.t('app.market.detail.message.num_error'));
+						return;
+					});
+				}
+				let num = Number(e.detail.value);
+				if (num > 200) {
+					if (num > this.list.length) {
+						this.$nextTick(() => {
+							this.buyNum = this.list.length;
+						});
+						return;
+					}
+					this.$nextTick(() => {
+						this.buyNum = 200;
+					});
+					return;
+				}
+				if (num > this.list.length) {
+					this.$nextTick(() => {
+						this.buyNum = this.list.length;
+					});
+					return;
+				}
+			},
+			async getOnSaleList(e) {
+				if (e.detail.value.includes(".")) {
+					let decimal = e.detail.value.split(".");
+					this.$nextTick(() => {
+						if (decimal[1].length > 0) {
+							this.buyPrice = e.detail.value;
+						} else {
+							this.buyPrice = decimal[0];
+						}
+					});
+				}
+				if (!this.buyPrice) return;
+				this.list = [];
+				let params = {
+					appId: this.item.appid,
+					schemaId: this.item.schema_id,
+					userId: this.userId,
+					maxPrice: Number(this.buyPrice),
+					page: 1,
+					pageSize: 100,
+				}
+				const res = await GameItemOnSaleList2Api(params);
+				if (res.code == 0) {
+					this.list = res.datas.sells;
+				}
+			},
+			async buyShopSubmit() {
+				if (this.buyNum > 200) {
+					uni.$u.toast(i18n.t("app.market.detail.bulk_buying.num_error"))
+					return;
+				}
+				if (Number(this.item.sell_min) > Number(this.buyPrice)) {
+					uni.$u.toast(i18n.t("app.market.detail.bulk_buying.price_error"));
+					return;
+				}
+				if (this.buyNum > this.list.length) {
+					uni.$u.toast(i18n.t("app.market.detail.bulk_buying.num_over"));
+					return;
+				}
+				try {
+					uni.showLoading({
+						title: i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					let params = {
+						num: this.buyNum,
+						price: this.buyPrice,
+						appId: this.item.appid,
+						id: this.item.schema_id,
+						paintIndex: this.tags ? this.tags.phaseId : undefined,
+						paintWearMax: this.tags ? this.tags.wearMax : undefined,
+						paintWearMin: this.tags ? this.tags.wearMin : undefined,
+					}
+					const res = await OrderItemBatchBuyApi(params);
+					console.log(res)
+					uni.hideLoading();
+					if (res.datas.includes('Steam issue') || res.datas.includes('Inventory privacy')) {
+						let msg = this.i18n.t('app.inventory.message.privacy') + getAppUserInfo().config.nickname
+						uni.showModal({
+							content: res.datas.includes('Steam issue') ? this.i18n.t(
+								'app.steam.message.trading_restrictions') : msg,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							
+						})
+						return;
+					}
+					if (res && res.code == 0) {
+						uni.$u.toast(res.datas);
+						uni.$emit('order-purchase-success');
+						setTimeout(() => {
+							uni.navigateBack();
+						}, 1000);
+					}
+				} catch (e) {
+					uni.hideLoading();
+				}
+			},
+			handleFilterSubmit(tags) {
+				this.tags = tags;
+				let phase_text =  tags.phase?tags.phase + ', ':'';
+				this.showTags = phase_text + this.i18n.t('app.market.filter.csgo.wear_interval') +
+					': ' + tags.wearMax + '-' + tags.wearMin;
+			},
+			toFilter() {
+				this.show = true;
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.buyying-container {
+		width: 750rpx;
+		flex: 1;
+		background-color: $app-surface;
+
+		.buyying-item-header {
+			width: 750rpx;
+			padding: 10rpx 20rpx;
+			display: flex;
+			flex-direction: row;
+			background-color: $app-background;
+
+			.header-title {
+				width: 500rpx;
+				margin-left: 20rpx;
+				display: flex;
+				flex-direction: column;
+				flex-wrap: wrap;
+
+				.market-name {
+					font-size: $font-size-md;
+					color: $app-text-primary;
+					lines: 1;
+					text-overflow: ellipsis;
+				}
+
+				.reference-price {
+				  font-size: $font-size-sm;   
+				  color: $app-text-secondary; 
+				  font-weight: normal;        
+				  margin-top: 10rpx;
+				}
+			}
+		}
+
+		.sale-price-wrap {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+			margin-bottom: 10rpx;
+
+			.sale-price-item {
+				width: 375rpx;
+				height: 100rpx;
+				align-items: center;
+				padding-top: 10rpx;
+
+				.price-text {
+					font-size: $font-size-md;
+					font-weight: bold;
+					color: $app-text-price;
+				}
+
+				.price-label {
+					margin-top: 5rpx;
+					font-size: $font-size-sm;
+					color: $app-text-thirdly;
+				}
+			}
+		}
+
+		.purchase-type {
+			width: 750rpx;
+			padding: 20rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+			border-bottom: 1rpx solid $app-surface;
+			border-top: 1rpx solid $app-surface;
+			margin-top: 10rpx ;
+			margin-bottom: 10rpx;
+
+			.label {
+				width: 200rpx;
+				display: flex;
+				flex-direction: column;
+				text-align: center;
+				font-size: $font-size-sm;
+			}
+
+			.value {
+				width: 480rpx;
+				font-size: $font-size-sm;
+				text-align: left;
+			}
+		}
+
+		.purchase-price {
+			width: 750rpx;
+			padding: 20rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+			border-bottom: 1rpx solid $app-surface;
+
+			.label {
+				width: 200rpx;
+				display: flex;
+				flex-direction: column;
+				text-align: center;
+				font-size: $font-size-sm;
+			}
+
+			.price-input {
+				width: 550rpx;
+				font-size: $font-size-sm;
+				text-align: left;
+			}
+
+			.price-input-num {
+				width: 350rpx;
+				font-size: $font-size-sm;
+				text-align: left;
+			}
+
+			.price-num-label {
+				width: 200rpx;
+				font-size: $font-size-sm;
+				text-align: center;
+				color: $app-text-thirdly;
+			}
+		}
+
+		.select-content {
+			width: 750rpx;
+			height: 80rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding-left: 20rpx;
+			background-color: $app-background;
+			position: fixed;
+			left: 0;
+			bottom: 0rpx;
+			border-top: 1rpx solid $app-surface;
+
+			.select-left {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				background-color: $app-background;
+
+				.select-all {
+					width: 100rpx;
+					color: $app-text-primary;
+					text-align: center;
+					font-size: $font-size-md;
+					padding: 10rpx 0;
+					margin-right: 10rpx;
+				}
+
+				.select-label {
+					font-size: $font-size-md;
+					color: $app-text-primary;
+					margin-right: 10rpx;
+				}
+
+				.select-value {
+					font-size: $font-size-md;
+					color: $app-text-price;
+					font-weight: bold;
+				}
+			}
+
+			.select-right {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				background-color: $app-background;
+
+				.up-shop-btn {
+					width: 200rpx;
+					height: 80rpx;
+					line-height: 80rpx;
+					font-size: $font-size-md;
+					text-align: center;
+					color: $app-background;
+					background-color: $app-success-dark;
+				}
+
+				.change-price-btn {
+					width: 200rpx;
+					height: 80rpx;
+					line-height: 80rpx;
+					font-size: $font-size-md;
+					text-align: center;
+					color: $app-background;
+					background-color: $app-text-disabled;
+				}
+			}
+		}
+	}
+</style>

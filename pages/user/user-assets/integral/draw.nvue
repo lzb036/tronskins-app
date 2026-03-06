@@ -1,0 +1,265 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.integral.draw_weekly')" :autoBack="true" bgColor="#6471bf" :titleStyle="{color:'#fff'}"
+			leftIconColor="#fff" placeholder>
+			<view slot="right">
+				<text class="right-text" @click="toMore()">{{ i18n.t('app.market.view_more') }}</text>
+			</view>
+		</u-navbar>
+		<scroll-view class="container">
+			<view class="draw-container">
+				<view class="draw-header">
+					<view class="residual-bg">
+						<text v-if="isLogin&&userInfo.fund"
+							class="residual-integral">剩余积分：{{integral}}</text>
+					</view>
+				</view>
+				<view class="transition-block">
+
+				</view>
+				<view class="draw-box">
+					<view class="header">
+						<view class="dot"></view>
+						<view class="opportunity-bg">
+							<text class="opportunity">今天还有{{lotteryNum}}次抽奖机会</text>
+						</view>
+						<view class="dot"></view>
+					</view>
+					<ExchangeList :integral="integral" @draw="handleDraw"></ExchangeList>
+					<text class="market-name">TronSkins</text>
+				</view>
+			</view>
+			<view class="rules-box">
+				<text class="title">抽奖规则：</text>
+				<text class="label">活动时间</text>
+				<text class="text">2024年11月1日起，每周都可参加</text>
+				<text class="label">活动说明</text>
+				<text class="text">活动期间TronSkins用户每周可参加4次抽奖，TronSkins会员用户每周可额外参加1次抽奖，奖品将直接发放至获奖用户的账户中</text>
+				<text class="label">奖品说明</text>
+				<text class="text">10000元提现券: 10000元以内金额，在我的钱包免费提现一次，有效期10天。</text>
+				<text class="text">满减券5000-50元: 购买单价满5000元的皮肤减免50元。</text>
+				<text class="text">满减券10000-100元: 购买单价满10000元的皮肤减免100元。</text>
+				<text class="text">自动备注体验：购买的饰品会自动备注购入价，有效期3天。</text>
+				<text class="text">价格走势体验：可查看最近六个月的饰品价格走势，有效期3天。</text>
+				<text class="text">关注饰品体验：关注的饰品显示价格变动，降价自动提醒，提升关注上限有效期3天。</text>
+				<text class="text">高闪检视体验：优先解析、支持特殊角度解析，有效期3天。</text>
+				<text class="label margin-style">本活动与苹果公司无关</text>
+				<text class="label">中奖概率说明：</text>
+				<text class="text">奖品：价格走势体验 中奖概率：20%</text>
+				<text class="text">奖品：满减券10000-100元 中奖概率：15%</text>
+				<text class="text">奖品：在售数量走势体验 中奖概率：15%</text>
+				<text class="text">奖品：关注饰品体验 中奖概率：15%</text>
+				<text class="text">奖品：满减券5000-50元 中奖概率：10%</text>
+				<text class="text">奖品：5000元提现券 中奖概率：2%</text>
+				<text class="text">奖品：10000元提现券 中奖概率：1%</text>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import {
+		isLogin
+	} from '@/services/user.js'
+	import {
+		userInfoApi
+	} from '@/api/modules/user.js'
+	import {
+		getAppUserInfo,
+		setAppUserInfo
+	} from '@/utils/storage/modules/user.js'
+	import ExchangeList from "@/components/integral/exchangeList.nvue";
+
+	export default {
+		components: {
+			ExchangeList
+		},
+		data() {
+			return {
+				i18n: i18n,
+				userInfo: {},
+				integral: null,
+				lotteryNum: 4,
+				isDraw: false,
+				isLogin: false
+			}
+		},
+		mounted() {
+			this.isLogin = isLogin();
+			this.getUserInfo();
+		},
+		methods: {
+			async getUserInfo() {
+				const res = await userInfoApi();
+				if (res.code != 0) return;
+				this.userInfo = res.datas;
+				if (!this.userInfo.fund) {
+					return;
+				}
+				this.integral = this.userInfo.fund.integral ? Math.floor(this.userInfo.fund.integral) : 0;
+				if (this.isDraw) {
+					let user = getAppUserInfo();
+					if (user) {
+						user.fund.integral = this.integral;
+						// 更新缓存中的用户信息
+						setAppUserInfo(user);
+					}
+				}
+			},
+			handleDraw() {
+				this.isDraw = true;
+				this.getUserInfo();
+			},
+			toMore(){
+				// uni.$u.route('/pages/user/points/draw-more')
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+	.container {
+		width: 750rpx;
+		padding: 20rpx;
+		background: #2d077e;
+	}
+	
+	.right-text{
+		color: $app-background;
+		font-size: $font-size-md;
+	}
+
+	.draw-container {
+		width: 710rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		background: #1b044c;
+		padding: 140rpx 0rpx 100rpx;
+	}
+
+	.draw-header {
+		width: 600rpx;
+		padding: 10rpx 20rpx;
+		background: #fdd95b;
+		border-top: 6rpx solid #edc537;
+		border-top-left-radius: 30rpx;
+		border-top-right-radius: 30rpx;
+		position: relative;
+		z-index: 1;
+
+		.residual-bg {
+			padding: 25rpx 20rpx;
+			background: #e7ba1a;
+			border-top-left-radius: 30rpx;
+			border-top-right-radius: 30rpx;
+			border: 3rpx solid #fde387;
+			border-top: 6rpx solid #ffe77c;
+
+			.residual-integral {
+				font-size: $font-size-lg;
+				font-weight: bold;
+				color: #fef8e6;
+				text-align: center;
+			}
+		}
+	}
+
+	.transition-block {
+		width: 640rpx;
+		height: 0;
+		border-bottom: 50rpx solid #e4bb2a;
+		border-left: 1rpx solid transparent;
+		border-right: 1rpx solid transparent;
+		transform: perspective(480rpx) rotateX(40deg);
+		transform-origin: bottom;
+		margin-top: -10rpx;
+		position: relative;
+		z-index: -1;
+	}
+
+	.draw-box {
+		width: 710rpx;
+		background: #fdd95b;
+		padding: 20rpx;
+		border-radius: 20rpx;
+		border-top: 6rpx solid #ffe77c;
+		position: relative;
+		z-index: 1;
+		margin-top: -5rpx;
+
+		.market-name {
+			font-size: 32rpx;
+			color: #fef8e6;
+			text-align: center;
+			font-weight: 600;
+			margin-top: 10rpx;
+		}
+	}
+
+	.header {
+		width: 680rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 20rpx;
+
+		.dot {
+			width: 30rpx;
+			height: 30rpx;
+			border-radius: 50rpx;
+			background: #fee68e;
+		}
+
+		.opportunity-bg {
+			width: 500rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+			padding: 20rpx 0;
+			background: #efc630;
+			border-radius: 20rpx;
+			margin: 0 50rpx;
+			border: 1rpx solid #f8dd52;
+
+			.opportunity {
+				font-size: $font-size-md;
+				font-weight: bold;
+				color: #fef8e6;
+			}
+		}
+	}
+
+	.rules-box {
+		width: 710rpx;
+		background: #1b044c;
+		padding: 20rpx;
+
+		.title {
+			color: #d7d4e4;
+			font-size: 30rpx;
+			font-weight: bold;
+			margin-bottom: 20rpx;
+		}
+
+		.label {
+			color: #d7d4e4;
+			font-size: 26rpx;
+			margin: 12rpx 0 8rpx;
+		}
+
+		.margin-style {
+			margin: 30rpx 0;
+		}
+
+		.text {
+			color: #d7d4e4;
+			font-size: $font-size-sm;
+			margin: 8rpx 0;
+		}
+	}
+</style>

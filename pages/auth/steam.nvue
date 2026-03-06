@@ -1,0 +1,152 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.steam.login.title')" leftIconColor="#fff" :titleStyle="{color:'#fff'}"
+			bgColor="#171a21" :autoBack="true" placeholder></u-navbar>
+		<view class="container">
+			<text class="text">1.{{ i18n.t('app.steam.message.load_error') }}</text>
+			<view class="btn-wrap">
+				<text class="text">2.{{ i18n.t('app.steam.message.load_error_2') }}</text>
+				<button class="refresh-btn" @click="reload()" type="primary"
+					size="mini">{{ i18n.t('app.common.refresh') }}</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import config from '@/config';
+	import {
+		LoginSsoSteamApi
+	} from '@/api/modules/login/auth.js';
+	import {
+		setAccessToken
+	} from '@/utils/storage/modules/user.js';
+	import {
+		getServerCookie
+	} from '@/utils/storage/modules/domain.js';
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				web: null,
+			}
+		},
+		onBackPress(options) {
+			if (this.web && options.from == 'navigateBack') {
+				this.close();
+			}
+		},
+		mounted() {
+			this.createWeb();
+		},
+		methods: {
+			createWeb() {
+				try {
+					const page = this.$scope.$getAppWebview();
+					this.web = plus.webview.create("", "WKWebview", {
+						plusrequire: "none",
+						kernel: 'WKWebview',
+						'uni-app': 'none',
+						top: this.getSystemInfo().statusBarHeight + 44 + "px",
+						height: this.getSystemInfo().windowHeight + "px",
+						progress: {
+							color: '#74bcff'
+						}
+					})
+					this.web.loadURL(getServerCookie() + 'api/public/steam/auth/login/validate');
+					let i = 0;
+					this.web.addEventListener('loaded', (e) => {
+						let url = e.target.getURL();
+						if (url.includes('callback=')) {
+							let index = url.indexOf('callback=');
+							let callback = '';
+							if (index !== -1) {
+								// 截取 ?callback= 后面的数据  
+								const url_replace = url.replace('#', '%23').replace(/\+/g, '%2B');
+								callback = url_replace.substring(index + 'callback='.length);
+								i++;
+							}
+							if (callback && (i == 1)) {
+								plus.push.getClientInfoAsync(async (sys) => {
+									const res = await LoginSsoSteamApi({
+										callback: callback,
+										udid: sys.clientid
+									});
+									if (res.code == 0) {
+										this.web.close();
+										this.web = null;
+										// 账号变更 要刷新库存 和店铺
+										await setAccessToken({
+											accessToken: res.datas.accessToken || res.datas.token,
+											accessTokenExpireTime: res.datas.accessTokenExpireTime,
+											refreshTokenExpireTime: res.datas.refreshTokenExpireTime ?? res.datas.refreshExpireTime,
+											header: res.datas.header
+										});
+										console.log("登陆成功")
+										uni.switchTab({
+											url: '/pages/user/user-center',
+										})
+									}
+								});
+
+							}
+						}
+					}, false);
+					page.append(this.web);
+					this.web.show();
+				} catch (error) {
+					console.log(error)
+					this.web.close();
+					//TODO handle the exception
+				}
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			close() {
+				this.web.close();
+				this.web = null; // 清理引用，防止内存泄漏
+			},
+			reload() {
+				this.close();
+				this.createWeb();
+			}
+		}
+	}
+</script>
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		padding: 20rpx 30rpx;
+
+		.text {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+
+		.btn-wrap {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+			margin-top: 20rpx;
+		}
+
+		.refresh-btn {
+			width: 120rpx;
+			height: 40rpx;
+			font-size: $font-size-xs;
+			margin-left: 20rpx;
+			border-radius: 0;
+			background: $app-icon-active;
+			border: 1rpx solid $app-icon-active;
+		}
+	}
+</style>

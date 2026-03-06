@@ -1,0 +1,1089 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.steam.verification')" leftIconColor="#fff" :titleStyle="{color:'#fff'}"
+			bgColor="#171a21" :autoBack="true"></u-navbar>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		steamTokenFreshApi
+	} from '@/api/modules/steam.js';
+	import {
+		getSteamInfo
+	} from '@/utils/dq/steam.js';
+	import {
+		getLanguage
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				getUserSteamWeb: null,
+				isWebviewActive: false,
+				activeTimers: [],
+				pendingOperations: new Set(),
+			}
+		},
+		async onBackPress(options) {
+			if (this.getUserSteamWeb) {
+				await this.close();
+				await uni.redirectTo({
+					url: '/pages/user/steam/steam-setting'
+				});
+				return true;
+			}
+		},
+		mounted() {
+			this.createUserSteamWeb();
+			plus.key.addEventListener('backbutton', this.onBackButton);
+		},
+		beforeDestroy() {
+			plus.key.removeEventListener('backbutton');
+		},
+		methods: {
+			async createUserSteamWeb() {
+				this.isWebviewActive = true;
+				if (this.getUserSteamWeb) {
+					await this.close();
+				}
+				const page = this.$scope.$getAppWebview();
+				this.getUserSteamWeb = plus.webview.create("", "WKWebview", {
+					plusrequire: "none",
+					kernel: 'WKWebview',
+					'uni-app': 'none',
+					top: this.getSystemInfo().statusBarHeight + 44 + "px",
+					height: this.getSystemInfo().windowHeight + "px",
+					progress: {
+						color: '#74bcff'
+					}
+				});
+				const steamLang = await this.getSteamLanguage();
+				this.getUserSteamWeb.loadURL(`https://steamcommunity.com/login/home/?l=${steamLang}`);
+				let isMainLogicHandled = false;
+				try {
+					this.getUserSteamWeb.addEventListener('loaded', async (e) => {
+						try {
+							if (!this.isWebviewActive) return;
+							if (isMainLogicHandled) return;
+							isMainLogicHandled = true;
+							let steamInfo = await getSteamInfo();
+							if (steamInfo && (steamInfo.status || steamInfo.isloginSteam) && steamInfo
+								.steamId) {
+								try {
+									// 注销已登录账号
+									await this.getUserSteamWeb.evalJS('javascript:Logout();');
+									const reloadTimer = setTimeout(() => {
+										if (this.isWebviewActive) {
+											this.createUserSteamWeb();
+										}
+									}, 1500);
+									this.activeTimers.push(reloadTimer);
+									return;
+								} catch (error) {
+									console.error("注销操作失败:", error);
+								}
+							}
+							// 注入主要的登录流程脚本
+							await this.injectLoginScript();
+							this.startTitleMonitoring();
+						} catch (error) {
+							console.log(error)
+						}
+					}, false);
+
+					this.getUserSteamWeb.addEventListener('error', (e) => {
+						if (this.isWebviewActive) {
+							uni.showToast({
+								title: 'Network load failed. Trying again....',
+								icon: 'none'
+							});
+							// 重新加载webview
+							setTimeout(() => {
+								this.createUserSteamWeb();
+							}, 2000);
+						}
+					}, false);
+
+
+					// 页面加载超时处理
+					const loadTimeout = setTimeout(() => {
+						if (this.isWebviewActive && !isMainLogicHandled) {
+							console.log('页面加载超时，重新加载');
+							this.getUserSteamWeb.reload();
+						}
+					}, 10000);
+					this.activeTimers.push(loadTimeout);
+
+					page.append(this.getUserSteamWeb);
+				} catch (errors) {
+					console.log(errors)
+				}
+				this.getUserSteamWeb.show();
+			},
+			startTitleMonitoring() {
+				if (!this.isWebviewActive || !this.getUserSteamWeb) return;
+
+				const title_timer = setInterval(async () => {
+					if (!this.isWebviewActive || !this.getUserSteamWeb) {
+						clearInterval(title_timer);
+						return;
+					}
+					try {
+						let title = this.getUserSteamWeb.getTitle();
+						const steamId = getAppUserInfo().config?.steamId;
+						console.log(title)
+						if (title && title.length > 0 && title.startsWith(
+								'eyAidHlwIjogIkpXVCIsICJhbGciOiAiRWREU0EiIH0') &&
+							steamId && steamId.length > 0) {
+							console.log("上传")
+							uni.showLoading({
+								mask: true
+							});
+							clearInterval(title_timer);
+							let match_str = "&steamId=";
+							let login_steamId = null;
+							if (title.includes(match_str)) {
+								login_steamId = title.split(match_str)[1];
+								title = title.split(match_str)[0];
+							}
+							// Steam ID 匹配检查
+							if (steamId && login_steamId && login_steamId !== steamId) {
+								console.log("SteamID不匹配，当前登录:", login_steamId, "绑定:", steamId);
+								await this.close();
+								setTimeout(async () => {
+									await uni.redirectTo({
+										url: '/pages/user/steam/steam-setting?showSteamIdNotMatch=true'
+									});
+								}, 1000);
+								return;
+							}
+							let steamReq = {
+								steamId: steamId,
+								freshToken: title,
+							}
+							uni.$u.debounce(async () => {
+								const qres = await steamTokenFreshApi(steamReq);
+								if (qres.code == 0) {
+									await this.close();
+									uni.$u.toast('Update token success');
+									setTimeout(async () => {
+										await uni.redirectTo({
+											url: '/pages/user/steam/steam-setting'
+										});
+									}, 1000);
+								} else {
+									uni.showToast({
+										title: 'Token update failed: ' + (qres
+											.message || 'unknown error'),
+										icon: 'none'
+									});
+								}
+								uni.hideLoading();
+							}, 500);
+						}
+					} catch (error) {
+						console.log(error)
+						clearInterval(title_timer);
+						uni.showToast({
+							title: 'Request failed, please try again',
+							icon: 'none'
+						});
+					} finally {
+						uni.hideLoading();
+					}
+				}, 2000);
+
+				this.activeTimers.push(title_timer);
+			},
+			async injectLoginScript() {
+				if (!this.isWebviewActive || !this.getUserSteamWeb) {
+					return;
+				}
+				const scriptContent = `
+			        (function() {
+			            // 获取多语言文本
+			            const getLocalizedText = (key) => {
+			                const pageLang = document.documentElement.lang || 'en';
+			                const userLang = pageLang.includes('zh') ? 'zh' : 'en';
+			                
+			                const translations = {
+			                    'en': {
+									'signIn': 'Sign in',
+			                        'account': 'Account',
+			                        'authenticator': 'You have a mobile authenticator protecting this account.',
+			                        'enterCode': 'Enter the code from your Steam Mobile App',
+			                        'backupCode': 'Use backup code',
+			                        'help': 'Help, I no longer have access to my Steam Mobile App',
+			                        'timeout': 'Session expired, please try again',
+			                        'sessionExpired': 'Session expired, restarting...',
+			                        'verificationTimeout': 'Verification timeout, restarting...',
+			                        'waitingForApprove': 'Waiting for approval in Steam Mobile App...',
+			                        'clickToSwitch': 'Click here to enter code manually',
+									'checkOff': 'Please check your password and account name and try again.',
+									'checkCodeError': '代码错误，请重试'
+			                    },
+			                    'zh': {
+									'signIn': '登录',
+			                        'account': '账户',
+			                        'authenticator': '此账户受到手机验证器保护。',
+			                        'enterCode': '输入您 Steam 手机应用上的代码',
+			                        'backupCode': '使用备用码',
+			                        'help': '请求帮助，我已无法访问我的 Steam 手机应用',
+			                        'timeout': '会话已过期，请重试',
+			                        'sessionExpired': '会话已过期，重新开始...',
+			                        'verificationTimeout': '验证超时，重新开始...',
+			                        'waitingForApprove': '请在Steam移动应用中确认登录...',
+			                        'clickToSwitch': '点击此处手动输入验证码',
+									'checkOff': '请核对您的密码和账户名称并重试。',
+									'checkCodeError': '代码错误，请重试'
+			                    }
+			                };
+			                
+			                const text = translations[userLang]?.[key] || translations['en'][key] || key;
+			                return text;
+			            };
+			            
+			            // 全局状态管理
+			            let globalState = {
+			                isProcessing: false,
+			                isPolling: false,
+			                pollingInterval: null,
+			                sessionStartTime: null,
+			                sessionTimeout: 120000,
+			                maxPollAttempts: 60, // 最多轮询60次
+			                pollAttempts: 0,
+			                interactionDetectedTime: null,
+			                maxInteractionWaitTime: 45000,
+			                hasReceivedRefreshToken: false,
+			                hasEnteredCode: false,
+							currentAuthMethod: 'code' // 'code' or 'phone'
+			            }
+			            
+			            function waitForElement(selector, timeout = 15000) {
+			                return new Promise((resolve, reject) => {
+			                    const startTime = Date.now();
+			                    function checkElement() {
+			                        const element = document.querySelector(selector);
+			                        if (element) {
+			                            resolve(element);
+			                        } else if (Date.now() - startTime >= timeout) {
+			                            reject(new Error('等待元素超时: ' + selector));
+			                        } else {
+			                            setTimeout(checkElement, 500);
+			                        }
+			                    }
+			                    checkElement();
+			                });
+			            }
+			        
+			            function safeAddEventListener(element, event, handler) {
+			                if (element && typeof element.addEventListener === 'function') {
+			                    element.addEventListener(event, handler);
+			                    return true;
+			                }
+			                console.error('无法为元素添加事件监听器', element);
+			                return false;
+			            }
+						
+			            // 全局变量，用于存储表单数据
+			            let form_acccount = '';
+			            let form_password = '';
+			            let RSARes = {};
+			            let beginAuthRes = {};
+			            
+			            // 验证账号密码
+			            async function validateCredentials(account, password) {
+			                return new Promise((resolve) => {
+			                    $J.ajax({
+			                        type: 'GET',
+			                        url: 'https://api.steampowered.com/IAuthenticationService/GetPasswordRSAPublicKey/v1/?account_name=' + account,
+			                    }).done(function(response) {
+			                        const RSAdata = response.response;
+			                        if (!RSAdata.publickey_mod) {
+			                            resolve(false);
+			                            return;
+			                        }
+			                        
+			                        var pubKey = RSA.getPublicKey(RSAdata.publickey_mod, RSAdata.publickey_exp);
+			                        var encryptedPassword = RSA.encrypt(password, pubKey);
+			                        
+			                        $J.ajax({
+			                            type: 'POST',
+			                            url: 'https://api.steampowered.com/IAuthenticationService/BeginAuthSessionViaCredentials/v1/',
+			                            data: {
+			                                "persistence": 1,
+			                                "encrypted_password": encryptedPassword,
+			                                "account_name": account,
+			                                "encryption_timestamp": RSAdata.timestamp
+			                            }
+			                        }).done(function(beginAuth) {
+			                            const beginAuthData = beginAuth.response;
+			                            if (beginAuthData && beginAuthData.client_id) {
+			                                beginAuthRes = beginAuthData;
+			                                globalState.sessionStartTime = Date.now();
+			                                globalState.interactionDetectedTime = null;
+			                                globalState.hasReceivedRefreshToken = false;
+			                                globalState.hasEnteredCode = false;
+			                                globalState.pollAttempts = 0;
+			                                console.log("认证会话开始成功，会话ID:", beginAuthData.client_id);
+			                                resolve(true);
+			                            } else {
+			                                resolve(false);
+			                            }
+			                        }).fail(function() {
+										resolve(false);
+									});
+			                    }).fail(function() {
+						            resolve(false);
+						        });
+			                });
+			            }
+			            
+			            // 检查会话是否过期
+			            function isSessionExpired(){
+			                if(!globalState.sessionStartTime) return true;
+			                const elapsed = Date.now() - globalState.sessionStartTime;
+			                return elapsed > globalState.sessionTimeout;
+			            }
+			            
+			            // 检查交互后等待时间是否过长
+			            function isInteractionWaitTooLong(){
+			                if(!globalState.interactionDetectedTime) return false;
+			                const elapsed = Date.now() - globalState.interactionDetectedTime;
+			                return elapsed > globalState.maxInteractionWaitTime;
+			            }
+			            
+			            // 清理轮询状态
+			            function cleanupPolling(){
+			                if(globalState.pollingInterval){
+			                    clearInterval(globalState.pollingInterval);
+			                    globalState.pollingInterval = null;
+			                }
+			                globalState.isPolling = false;
+			                globalState.pollAttempts = 0;
+			                globalState.interactionDetectedTime = null;
+			            }
+			            
+			            // 重新开始认证流程
+			            async function restartAuthFlow(){
+			                console.log("会话已过期，重新开始认证流程");
+			                cleanupPolling();
+			                globalState.isProcessing = false;
+			                globalState.hasReceivedRefreshToken = false;
+							globalState.hasEnteredCode = false;
+			                
+			                const errorElement = document.querySelector('.session-error-message');
+			                if (errorElement) {
+			                    errorElement.remove();
+			                }
+			                
+			                window.location.reload();
+			            }
+			            
+			            function startPollingAuthStatus() {
+			                if(globalState.isPolling) return;
+			                
+			                globalState.isPolling = true;
+			                globalState.pollAttempts = 0;
+			                console.log("开始轮询认证状态...");
+			                
+			                globalState.pollingInterval = setInterval(() => {
+			                    globalState.pollAttempts++;
+								
+								// 检查会话是否过期
+			                    if(isSessionExpired()){
+									console.error("认证会话已过期，停止轮询");
+			                        setTimeout(() => {
+			                            restartAuthFlow();
+			                        }, 3000);
+			                        return;
+			                    }
+			                    
+								// 轮询次数限制
+			                    if(globalState.pollAttempts > globalState.maxPollAttempts){
+			                        console.error("达到最大轮询次数，停止轮询");
+			                        setTimeout(() => {
+			                            restartAuthFlow();
+			                        }, 3000);
+			                        return;
+			                    }
+			                    
+								// 检查交互后等待时间是否过长
+								if (globalState.interactionDetectedTime && isInteractionWaitTooLong()) {
+								    console.error("交互等待超时");
+									setTimeout(() => {
+								        restartAuthFlow();
+								    }, 3000);
+								    return;
+								}
+			                    if (!beginAuthRes.client_id || !beginAuthRes.request_id) {
+									console.log("等待认证会话信息...");
+									return;
+								}
+								
+								console.log("轮询认证状态，尝试次数:", globalState.pollAttempts);
+			                   
+			                    $J.ajax({
+			                        type: 'POST',
+			                        url: 'https://api.steampowered.com/IAuthenticationService/PollAuthSessionStatus/v1/',
+			                        header: {
+			                            "Content-Type": 'application/x-www-form-urlencoded; charset=UTF-8',
+			                            "Referer": 'https://steamcommunity.com',
+			                        },
+			                        data: {
+			                            "client_id": beginAuthRes.client_id,
+			                            "request_id": beginAuthRes.request_id,
+			                        },
+									timeout: 10000
+			                    }).done(function(pollAuth) {
+			                        var pollAuthData = pollAuth.response;
+									console.log("轮询响应:", JSON.stringify(pollAuthData));
+			                        console.log("轮询响应状态:", pollAuthData.had_remote_interaction);
+			                        if (pollAuthData.had_remote_interaction && !globalState.interactionDetectedTime) {
+			                            globalState.interactionDetectedTime = Date.now();
+			                            console.log("检测到用户交互，开始等待refresh_token...");
+			                        }
+									
+									// 如果用户已经输入了验证码，继续等待
+									if (globalState.hasEnteredCode && pollAuthData.had_remote_interaction) {
+									    console.log("用户已输入验证码并确认，等待token...");
+										if (isInteractionWaitTooLong()) {
+											setTimeout(() => {
+											    restartAuthFlow();
+											}, 3000);
+										}
+									}
+									
+									// 成功获取token
+									if (pollAuthData.refresh_token) {
+									    globalState.hasReceivedRefreshToken = true;
+									    cleanupPolling();
+									    document.title = pollAuthData.refresh_token+"&steamId="+beginAuthRes.steamid;
+									    console.log("认证成功，refresh_token已设置");
+										return;
+									}
+									
+									// 如果已经交互但还没有token，继续等待
+									if (pollAuthData.had_remote_interaction && !pollAuthData.refresh_token) {
+									    console.log("已检测到交互，等待token生成...");
+									    if (globalState.hasEnteredCode) {
+											console.log(getLocalizedText('waitingForApprove'))
+									    }
+									}
+			                    }).fail(function(xhr, status, error) {
+			                        console.error("轮询请求失败，状态:", status, "错误:", error, "响应文本:", xhr.responseText);
+									
+									// 如果是网络错误，继续重试
+									if (xhr.status === 0 || xhr.status === -1) {
+									    console.log("网络错误，继续轮询...");
+									    return;
+									}
+									
+									// 如果是会话过期错误，重新开始流程
+			                        if(xhr.status === 403 || xhr.status == 401){
+			                            console.error("认证会话已失效，重新开始流程");
+			                            setTimeout(() => {
+			                                restartAuthFlow();
+			                            }, 3000);
+			                        }
+			                    });
+			                }, 2000);
+			            }
+						
+			            // 验证码输入流程函数
+			            async function enterCodeLogin() {
+			                try {
+			                    if (globalState.isProcessing) return;
+			                    globalState.isProcessing = true;
+			                    globalState.currentAuthMethod = 'code';
+			                    
+			                    var nodeDom = document.querySelector('._3XCnc4SuTz8V8-jXVwkt_s');
+			                    if (!nodeDom) {
+			                        console.error("找不到目标DOM元素");
+			                        globalState.isProcessing = false;
+			                        return;
+			                    }
+			                    
+								console.log("找到节点DOM");
+			                    nodeDom.innerHTML = '';
+			                    
+			                    var formElement = document.createElement('form');
+			                    
+			                    // 创建主容器 div
+			                    var container = document.createElement('div');
+			                    container.className = '_1NOsG2PAO2rRBb8glCFM_6 _2QHQ1DkwVuPafY7Yr1Df6w';
+			                    container.style.gap = '14px';
+								
+			                    // 创建账户信息区域
+			                    var accountElement = document.createElement('div');
+			                    accountElement.className = '_3JBYGcszFcaSNXHHSR3kCV';
+			                    
+			                    // 账户文本
+			                    var accountText = document.createElement('div');
+			                    accountText.className = '_1hKgiFuFaVR_Sq1Gj_gCnd';
+			                    
+			                    // 创建账户号码span
+			                    var accountSpan = document.createElement('span');
+			                    accountSpan.className = '_31Vq4lzNWs4WikXVr9J4hz';
+			                    accountSpan.textContent = form_acccount;
+			                    
+			                    // 组装账户文本
+			                    accountText.appendChild(document.createTextNode(getLocalizedText('account') + ': '));
+			                    accountText.appendChild(accountSpan);
+			                    
+			                    var authText = document.createElement('div');
+			                    authText.className = '_2o5mE8JpPFOyJ0HwX_y0y7';
+			                    authText.textContent = getLocalizedText('authenticator');
+								
+			                    accountElement.appendChild(accountText);
+			                    accountElement.appendChild(authText);
+								
+			                    // 创建验证码输入区域
+			                    var codeElement = document.createElement('div');
+			                    codeElement.className = '_3huyZ7Eoy2bX4PbCnH3p5w';
+								
+			                    var inputContainer = document.createElement('div');
+			                    inputContainer.className = '_1NOsG2PAO2rRBb8glCFM_6 _2QHQ1DkwVuPafY7Yr1Df6w';
+			                    inputContainer.style.gap = '2px';
+			                    var inputErrorWrapper = document.createElement('div');
+			                    inputErrorWrapper.className = '_1W_6HXiG4JJ0By1qN_0fGZ';
+			                    inputErrorWrapper.innerHTML = '';
+						
+			                    var inputWrapper = document.createElement('div');
+			                    inputWrapper.className = '_1gzkmmy_XA39rp9MtxJfZJ Panel Focusable';
+			                
+			                    // 创建5个输入框
+			                    var steamCodes = ['', '', '', '', ''];
+			                    const inputs = [];
+								
+								// 创建加载状态元素
+								const loadingElement = document.createElement('div');
+								loadingElement.className = 'code-loading';
+								loadingElement.style.cssText = 'display: none;text-align:center;color:#007aff;font-size:14px;margin-top:8px';
+								loadingElement.textContent = getLocalizedText('waitingForApprove');
+								
+			                    for (let i = 0; i < 5; i++) {
+			                        var input = document.createElement('input');
+			                        input.type = 'text';
+			                        input.maxLength = 1;
+			                        input.autocomplete = 'none';
+			                        input.className = '_3xcXqLVteTNHmk-gh9W65d Focusable';
+			                        input.setAttribute('role', 'button');
+									
+			                        (function(index) {
+			                            input.addEventListener('input', function(e) {
+											// 清除错误状态
+											clearCodeError();
+											
+			                                if (e.target.value.length === 1 && index < 4) {
+			                                    inputs[index + 1].focus();
+			                                }
+			                                e.target.value = e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+			                                steamCodes[index] = e.target.value;
+											
+											// 在验证码输入区域添加状态管理
+											function updateCodeInputState(state, message = '') {
+											    const inputContainer = document.querySelector('._1NOsG2PAO2rRBb8glCFM_6._2QHQ1DkwVuPafY7Yr1Df6w');
+											    const errorWrapper = document.querySelector('._1W_6HXiG4JJ0By1qN_0fGZ');
+											    
+											    // 清除所有状态
+											    inputContainer.classList.remove('loading', 'error', 'success');
+											    errorWrapper.innerHTML = '';
+											    
+											    switch (state) {
+											        case 'loading':
+											            inputContainer.classList.add('loading');
+											            showCodeLoading();
+											            break;
+											            
+											        case 'error':
+											            inputContainer.classList.add('error');
+											            showCodeError(message || getLocalizedText('checkCodeError'));
+											            hideCodeLoading();
+											            break;
+											            
+											        case 'success':
+											            inputContainer.classList.add('success');
+											            hideCodeLoading();
+											            // 可以添加成功状态样式
+											            inputs.forEach(input => {
+											                input.style.borderColor = '#52c41a';
+											                input.style.backgroundColor = '#f6ffed';
+											            });
+											            break;
+											            
+											        case 'idle':
+											        default:
+											            hideCodeLoading();
+											            clearCodeError();
+											            inputs.forEach(input => {
+											                input.style.borderColor = '';
+											                input.style.backgroundColor = '';
+											            });
+											            break;
+											    }
+											}
+											
+			                                if (steamCodes.every(code => code)) {
+			                                    console.log("验证通过");
+			                                    console.log("client_id:", beginAuthRes.client_id);
+			                                    console.log("steamid:", beginAuthRes.steamid);
+			                                   
+			                                    if (!beginAuthRes.client_id || !beginAuthRes.request_id) {
+			                                        console.error("认证会话信息不完整，无法更新会话");
+													updateCodeInputState('error', getLocalizedText('checkCodeError'));
+			                                        return;
+			                                    }
+			                                    
+			                                    if (isSessionExpired()) {
+			                                        setTimeout(() => {
+			                                            restartAuthFlow();
+			                                        }, 3000);
+			                                        return;
+			                                    }
+												
+			                                    globalState.hasEnteredCode = true;
+												updateCodeInputState('loading'); // 设置loading状态
+												showCodeLoading();
+			                                    $J.ajax({
+			                                        type: 'POST',
+			                                        url: 'https://api.steampowered.com/IAuthenticationService/UpdateAuthSessionWithSteamGuardCode/v1',
+			                                        header: {
+			                                            "Content-Type": 'application/x-www-form-urlencoded; charset=UTF-8',
+			                                            "Referer": 'https://steamcommunity.com',
+			                                        },
+			                                        data: {
+			                                            "client_id": beginAuthRes.client_id,
+			                                            "steamid": beginAuthRes.steamid,
+			                                            "code_type": '3',
+			                                            "code": steamCodes.join(''),
+			                                        },
+													timeout: 10000
+			                                    }).done(function(updateAuth) {
+			                                        var codeRes = updateAuth.response;
+			                                        console.log("更新会话响应:", JSON.stringify(codeRes));
+			                                        if (codeRes.agreement_session_url === '') {
+			                                            console.log("会话更新成功，等待轮询检测状态");
+														updateCodeInputState('success');
+														hideCodeLoading();
+			                                        }else{
+														updateCodeInputState('error', getLocalizedText('checkCodeError'));
+														showCodeError(getLocalizedText('checkCodeError'));
+													}
+			                                    }).fail(function(xhr, status, error) {
+			                                        console.error("更新会话失败:", status, error);
+													updateCodeInputState('error', getLocalizedText('checkCodeError'));
+													showCodeError(getLocalizedText('checkCodeError'));
+			                                        setTimeout(() => {
+			                                            restartAuthFlow();
+			                                        }, 3000);
+			                                    });
+			                                }
+			                            });
+			                            
+			                            input.addEventListener('keydown', function(e) {
+			                                if (e.key === 'Backspace' && e.target.value.length === 0 && index > 0) {
+			                                    inputs[index - 1].focus();
+			                                }
+			                                
+			                                if (e.key === 'ArrowLeft' && index > 0) {
+			                                    inputs[index - 1].focus();
+			                                    e.preventDefault();
+			                                }
+			                                if (e.key === 'ArrowRight' && index < 4) {
+			                                    inputs[index + 1].focus();
+			                                    e.preventDefault();
+			                                }
+			                            });
+			                        })(i);
+			                        
+			                        inputs.push(input);
+			                        inputWrapper.appendChild(input);
+			                    }
+			                
+			                    inputContainer.appendChild(inputErrorWrapper);
+			                    inputContainer.appendChild(inputWrapper);
+			                    codeElement.appendChild(inputContainer);
+								
+			                    
+								// 创建提示区域
+			                    var hintElement = document.createElement('div');
+			                    hintElement.className = '_2Io_Jc8M4cRHn9cU4vHcqW';
+			                    hintElement.style.display = 'flex';
+			                    hintElement.style.flexDirection = 'row';
+			                    hintElement.style.justifyContent = 'space-evenly';
+			                    hintElement.style.alignItems = 'center';
+								
+			                    var hintText = document.createElement('div');
+			                    hintText.className = '_1rEWOv1g1uTXNhoWiJLQZs';
+			                    hintText.textContent = getLocalizedText('enterCode');
+			                
+			                    var svgIcon = document.createElement('div');
+								svgIcon.innerHTML = '<svg viewBox="0 0 33 49" fill="currentColor" class="_3WvDpj9Ng6SQliygcVqlJU"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M28 47.1106C29.1046 47.1106 30 46.2151 30 45.1106L30 3.72705C30 2.62248 29.1046 1.72705 28 1.72705L5 1.72705C3.89544 1.72705 3 2.62248 3 3.72705L3 45.1106C3 46.2151 3.89543 47.1106 5 47.1106L28 47.1106ZM5.68119 5.82741L27.3188 5.82741L27.3188 42.7772H5.68119L5.68119 5.82741ZM20.9999 44.944C20.9999 45.3429 20.6766 45.6662 20.2777 45.6662L12.7221 45.6662C12.3233 45.6662 11.9999 45.3429 11.9999 44.944C11.9999 44.5451 12.3233 44.2218 12.7221 44.2218H20.2777C20.6766 44.2218 20.9999 44.5451 20.9999 44.944ZM17.2778 4.44406C17.6767 4.44406 18 4.12071 18 3.72184C18 3.32296 17.6767 2.99962 17.2778 2.99962L15.7222 2.99962C15.3233 2.99962 15 3.32296 15 3.72184C15 4.12071 15.3233 4.44406 15.7222 4.44406L17.2778 4.44406Z"></path><path fill="currentColor" d="M22.2456 22.4164C22.2456 21.6666 22.8127 21.0002 23.6228 21.0002C24.3519 21.0002 25 21.6666 25 22.4164C25 23.1661 24.3519 23.8325 23.6228 23.8325C22.8937 23.8325 22.2456 23.1661 22.2456 22.4164Z"></path><path fill="currentColor" d="M18.6812 22.4164C18.6812 21.6666 19.2483 21.0002 20.0584 21.0002C20.8685 21.0002 21.5166 21.6666 21.4355 22.4164C21.4355 23.1661 20.8685 23.8325 20.0584 23.8325C19.3293 23.8325 18.6812 23.1661 18.6812 22.4164Z"></path><path fill="currentColor" d="M15.1977 22.4164C15.1977 21.6666 15.7648 21.0002 16.5749 21.0002C17.304 21.0002 17.9521 21.6666 17.9521 22.4164C17.9521 23.1661 17.385 23.8325 16.5749 23.8325C15.8458 23.8325 15.1977 23.1661 15.1977 22.4164Z"></path><path fill="currentColor" d="M11.7143 22.4164C11.7143 21.6666 12.2814 21.0002 13.0915 21.0002C13.8206 21.0002 14.4686 21.6666 14.4686 22.4164C14.4686 23.1661 13.9016 23.8325 13.0915 23.8325C12.3624 23.8325 11.7143 23.1661 11.7143 22.4164Z"></path><path fill="currentColor" d="M8.14983 22.4164C8.14983 21.6666 8.7169 21.0002 9.527 21.0002C10.3371 21.0002 10.9852 21.6666 10.9042 22.4164C10.9042 23.1661 10.3371 23.8325 9.527 23.8325C8.79791 23.8325 8.14983 23.1661 8.14983 22.4164Z"></path></svg>';
+			                    svgIcon.style.fontSize = '24px';
+			                    
+			                    hintElement.appendChild(hintText);
+			                    hintElement.appendChild(svgIcon);
+			                    codeElement.appendChild(hintElement);
+			                
+			                    // 创建底部链接
+			                    var backupLink = document.createElement('div');
+			                    backupLink.className = '_1K431RbY14lkaFW6-XgSsC _2FyQDUS2uHbW1fzoFK2jLx';
+			                    backupLink.textContent = getLocalizedText('backupCode');
+			                    
+			                    var helpLink = document.createElement('a');
+			                    helpLink.className = '_1K431RbY14lkaFW6-XgSsC _2FyQDUS2uHbW1fzoFK2jLx';
+			                    helpLink.href = 'https://help.steampowered.com/wizard/HelpWithLoginInfo?lost=8&issueid=402';
+			                    helpLink.textContent = getLocalizedText('help');
+			                    
+			                    container.appendChild(accountElement);
+			                    container.appendChild(codeElement);
+			                    container.appendChild(backupLink);
+			                    container.appendChild(helpLink);
+			                
+			                    formElement.appendChild(container);
+			                    nodeDom.appendChild(formElement);
+								
+								// 显示验证码错误
+								function showCodeError(message){
+									inputErrorWrapper.innerHTML = '<div style="color: #c05654; text-align: center; font-size: 14px; margin-top: 8px;">'+message+'</div>';
+									inputs.forEach(input=>{
+										input.style.borderColor = '#c05654';
+									});
+									hideCodeLoading();
+								}
+								
+								// 清除验证码错误
+								function clearCodeError(){
+									inputErrorWrapper.innerHTML = '';
+								}
+								
+								// 显示加载状态
+								function showCodeLoading(){
+									loadingElement.style.display = 'block';
+									
+									// 添加加载动画
+									loadingElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; gap: 8px;"><div class="loading-spinner" style="width: 16px;height: 16px;border: 2px solid #007aff;border-top: 2px solid transparent;border-radius: 50%;animation: spin 1s linear infinite;"></div><span>'+getLocalizedText("waitingForApprove")+'</span></div>';
+									
+									// 添加css动画
+									const style = document.createElement('style');
+									style.id = 'loading-animation';
+									style.textContent = '@keyframes spin{ 0% {transform: rotate(0deg);}  100% { stransform: rotate(360deg); } }'
+									
+									if(!document.getElementById('loading-animation')){
+										document.head.appendChild(style);
+									}
+									
+									// 禁用输入框
+									inputs.forEach(input=>{
+										input.disabled = true;
+										// input.style.backgroundColor = '#f5f5f5';
+									});
+								}
+								
+								// 隐藏加载状态
+								function hideCodeLoading(){
+									loadingElement.style.display = 'none';
+									// 启用输入框
+									inputs.forEach(input=>{
+										input.disabled = false;
+										input.style.backgroundColor = '';
+									});
+								}
+								
+			                    
+			                    // 启动倒计时更新
+			                    const updateCountdown = () => {
+			                        if(!globalState.sessionStartTime) return;
+			                        const elapsed = Date.now() - globalState.sessionStartTime;
+			                        const remaining = Math.max(0, globalState.sessionTimeout - elapsed);
+			                        const seconds = Math.ceil(remaining / 1000);
+			                        
+			                        if (remaining > 0 && !globalState.hasReceivedRefreshToken) {
+			                            setTimeout(updateCountdown, 1000);
+			                        }
+			                    }
+			                    updateCountdown();
+			                    
+			                    console.log("验证码输入界面创建完成");
+			                    startPollingAuthStatus();
+			                } catch (error) {
+			                    console.error(error);
+			                    globalState.isProcessing = false;
+			                }
+			            }
+						
+						// 清除登录Steam账号密码错误样式
+						function clearErrorStyle(){
+							const form_inputs = document.querySelectorAll('._2GBWeup5cttgbTw8FM3tfx');
+							const existingError = document.querySelector('.login-error-message');
+							
+							if(form_inputs){
+								form_inputs.forEach(input=>{
+									input.style.border = '';
+									input.style.borderColor = '';
+								});
+							}
+							
+							if(existingError){
+								existingError.remove();
+							}
+						}
+						
+						// 显示错误提示及边框样式
+						function showError(form_inputs, errorMessage){
+							if(form_inputs){
+								form_inputs.forEach(input=>{
+									input.style.border = '1px solid';
+									input.style.borderColor = '#c05654';
+									input.style.borderRadius = '3px';
+								});
+							}
+							
+							// 移除之前可能存在的错误提示
+							const existingError = document.querySelector('.login-error-message');
+							if(existingError){
+								existingError.remove();
+							}
+							
+							// 创建错误提示元素
+							const errorMsg = document.createElement('div');
+							errorMsg.className = 'login-error-message';
+							errorMsg.style.cssText = "text-align: center;color:#c05654;font-size:14px;margin-top:12px;max-width:300px;margin-left:auto;margin-right:auto;font-family:Arial,sans-serif;";
+							errorMsg.textContent = errorMessage;
+							
+							// 在登录按钮下方插入错误提示
+							const loginButton = document.querySelector('.DjSvCZoKKfoNSmarsEcTS');
+							if(loginButton && loginButton.parentNode){
+								loginButton.parentNode.insertBefore(errorMsg, loginButton.nextSibling);
+							}
+							
+							// 为输入框添加输入事件监听，清除错误提示
+							if(form_inputs){
+								form_inputs.forEach(input=>{
+									input.removeEventListener('input', clearErrorStyle);
+									input.addEventListener('input', clearErrorStyle);
+								});
+							}
+						}
+						
+			            
+			            // 手机确认登录流程
+			            async function setupPhoneConfirmLogin() {
+			                try {
+			                    const login_dom = document.querySelector('.DjSvCZoKKfoNSmarsEcTS');
+			                    if (login_dom && login_dom.innerHTML && getLocalizedText('signIn').includes(login_dom.innerHTML)) {
+			                        safeAddEventListener(login_dom, 'click', async function(e) {
+										e.preventDefault(); // 阻止默认表单提交
+										e.stopPropagation();
+										
+			                            if (globalState.isProcessing) return;
+										
+										const form_inputs = document.querySelectorAll('._2GBWeup5cttgbTw8FM3tfx');
+										form_acccount = form_inputs[0] ? form_inputs[0].value : '';
+			                            form_password = form_inputs[1] ? form_inputs[1].value : '';
+			                            if (!form_acccount || !form_password) {
+			                                console.error("账号或密码为空");
+											showError(form_inputs, getLocalizedText('checkOff'));
+			                                return;
+			                            }
+			                            console.log("开始验证账号密码:", form_acccount);
+			                            const isValid = await validateCredentials(form_acccount, form_password);
+										console.log("isValid   ", isValid);
+										if (!isValid) {
+											// 验证不通过，则显示红色边框和提示文字
+											showError(form_inputs, getLocalizedText('checkOff'));
+			                                return;
+			                            }
+										console.log("账号密码验证成功，进入验证码流程");
+										await enterCodeLogin();
+			                        });
+			                    }
+			                } catch (error) {
+			                    console.error(error);
+			                    globalState.isProcessing = false;
+			                }
+			            }
+			        
+			            // 主流程函数
+			            async function initLoginFlow() {
+			                let maxRetries = 3;
+			                let retryCount = 0;
+			                
+			                async function attemptLoginFlow() {
+			                    try {
+			                        // 页面状态分析函数
+			                        async function analyzePageState(){
+			                            return {
+											isLoginPage: !!(document.querySelector('input[name="username"]') ||
+											                document.querySelector('._2GBWeup5cttgbTw8FM3tfx') ||
+											                document.querySelector('.login_form') ||
+											                document.querySelector('#login_btn_sign_in')),
+											isPhoneConfirmPage: !!(document.querySelector('.twofactorauth_PhoneAuthContainer') ||
+											                      document.querySelector('.phone_confirm_page') ||
+											                      document.querySelector('[class*="twofactorauth"]') ||
+											                      document.querySelector('[class*="PhoneAuth"]') ||
+											                      (document&&document.body && document.body.innerText&&(
+											                          (document.body.innerText.includes('手机确认') || 
+											                           document.body.innerText.includes('Approve Login')) &&
+											                          (!document.body.innerText.includes('Sign In')||
+																	  !document.body.innerText.includes('登录'))
+											                      ))),
+			                                isCodeInputPage: !!document.querySelector('input[type="text"][maxlength="1"]'),
+			                                enterCodeLink: !!document.querySelector('._1K431RbY14lkaFW6-XgSsC._2FyQDUS2uHbW1fzoFK2jLx'),
+											isLoggedIn: !!(document.querySelector('[data-steamid]') ||
+											              document.querySelector('.persona') ||
+											              window.location.href.includes('/profiles/') ||
+											              window.location.href.includes('/id/'))
+										}
+			                        }
+			                        
+			                        const pageState = await analyzePageState();
+			                        if (pageState.isLoginPage && !pageState.isCodeInputPage) {
+			                            console.log("检测到登录页面，设置登录监听");
+			                            await setupPhoneConfirmLogin();
+			                            
+			                            const usernameInput = document.querySelector('input[name="username"], ._2GBWeup5cttgbTw8FM3tfx');
+			                            const passwordInput = document.querySelector('input[name="password"], ._2GBWeup5cttgbTw8FM3tfx');
+			                            if (usernameInput && usernameInput.value?.length>0 && passwordInput && passwordInput.value?.length>0) {
+			                                console.log("检测到已输入账号密码，自动触发登录流程");
+			                                const loginButton = document.querySelector('.DjSvCZoKKfoNSmarsEcTS');
+			                                if (loginButton) {
+			                                    loginButton.click();
+			                                    await new Promise(resolve => setTimeout(resolve, 3000));
+			                                }
+			                            }
+			                        } else if (pageState.isPhoneConfirmPage&&pageState.isLoggedIn) {
+			                            console.log("检测到手机确认页面，自动切换到验证码输入");
+			                            await enterCodeLogin();
+			                        } else if (pageState.isCodeInputPage) {
+			                            console.log("已在验证码输入页面");
+			                            // 如果已经在验证码页面，确保轮询启动
+			                            if (!globalState.isPolling) {
+			                                startPollingAuthStatus();
+			                            }
+			                        } else {
+			                            console.log("未知页面状态，等待用户操作");
+			                        }
+			                    } catch (error) {
+			                        console.error("登录流程尝试失败:", error);
+			                        if (retryCount < maxRetries) {
+			                            retryCount++;
+			                            console.log('第' + retryCount + '次重试...');
+			                            setTimeout(attemptLoginFlow, 2000);
+			                        }
+			                    }
+			                }
+							
+			                try {
+			                    await attemptLoginFlow();
+			                } catch (error) {
+			                    console.error("初始化登录流程失败:", error);
+			                }
+			            }
+			            
+			            setTimeout(initLoginFlow, 500);
+			        })();
+			    `;
+
+				try {
+					await this.getUserSteamWeb.evalJS(scriptContent);
+					console.log("脚本注入成功");
+				} catch (error) {
+					console.error('注入登录脚本失败:', error);
+					setTimeout(async () => {
+						await uni.redirectTo({
+							url: '/pages/user/steam/steam-setting'
+						});
+					}, 500);
+				}
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			setState(state, message = '') {
+				this.currentState = state;
+				this.errorMessage = message;
+			},
+			async close() {
+				this.isWebviewActive = false;
+				this.setState('loading');
+				// 清除所有活动的定时器
+				this.activeTimers.forEach(timer => {
+					clearTimeout(timer);
+					clearInterval(timer);
+				});
+				this.activeTimers = [];
+				this.pendingOperations.clear();
+				if (this.getUserSteamWeb) {
+					try {
+						// 移除所有事件监听器
+						this.getUserSteamWeb.removeEventListener('loaded', () => {});
+						this.getUserSteamWeb.removeEventListener('error', () => {});
+
+						this.getUserSteamWeb.close();
+					} catch (error) {
+						console.error("关闭Webview时出错:", error);
+					}
+					this.getUserSteamWeb = null;
+				}
+			},
+			getSteamLanguage() {
+				const systemLang = getLanguage();
+				// 映射支持的语言，目前app只支持中文和英文
+				const langMap = {
+					'zh_CN': 'schinese',
+					'en_US': 'english',
+					'fr_FR': 'french', // French 法国
+					'ge_DE': 'german', // German 德国
+					'in_ID': 'indonesian', // Indonesian 印尼
+					'it_IT': 'italian', // Italian 意大利
+					'ja_JP': 'japanese', // Japanese 日本
+					'ko_KR': 'koreana', // Korean 韩国
+					'po_PL': 'polish', // Polish 波兰
+					'po_PT': 'brazilian', // Portuguese_Brazil 葡萄牙语-巴西
+					'ru_RU': 'russian', // Russian 俄罗斯
+					'la_LAT': 'latam', // Spanish_LatinAmerica 西班牙语-拉丁美洲
+					'sp_ES': 'spanish', // Spanish_Spain 西班牙语-西班牙
+					'th_TH': 'thai', // Thai 泰国
+					'tu_TR': 'turkish', // Turkish 土耳其
+					'vi_VN': 'vietnamese', // Vietnamese 越南
+					'zh_HK': 'tchinese', // Hong Kong 香港
+					'bg_BG': 'bulgarian', // Bulgaria 保加利亚
+					'cs_CZ': 'czech', // Czech Republic 捷克
+					'da_DK': 'danish', // Denmark 丹麦
+					'el_GR': 'greek', // Greece 希腊
+					'hu_HU': 'hungarian', // Hungary 匈牙利
+					'nl_NL': 'dutch', // Netherlands 荷兰
+					'no_NO': 'norwegian', // Norway 挪威
+					'ro_RO': 'romanian', // Romania 罗马尼亚
+					'fi_FI': 'finnish', // Finland 芬兰
+					'sv_SE': 'swedish', // Sweden 瑞典
+					'uk_UA': 'ukrainian', // Ukraine 乌克兰
+				};
+				return langMap[systemLang] || 'english';
+			},
+			async onBackButton() {
+				if (this.getUserSteamWeb) {
+					await this.close();
+					await uni.redirectTo({
+						url: '/pages/user/steam/steam-setting'
+					});
+				}
+			},
+			onUnload() {
+				this.close();
+			},
+			onHide() {
+				this.close();
+			},
+		}
+	}
+</script>

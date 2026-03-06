@@ -1,0 +1,64 @@
+<template>
+	<view class="sticket-container">
+		<view class="sticket-item" v-for="sticker in list" :key="sticker">
+			<!-- <text class="wear" :style="{'width': width + 'rpx'}">100%</text> -->
+			<image class="img" :style="{'width': width + 'rpx','height': width + 'rpx'}" :src="getStickerSrc(sticker)">
+			</image>
+		</view>
+	</view>
+</template>
+
+<script>
+	export default {
+		props: {
+			list: {
+				type: Array,
+				default: [],
+			},
+			schemas: {
+				type: Object,
+				default: {},
+			},
+			width: {
+				type: Number,
+				default: 30,
+			},
+		},
+		methods: {
+			getStickerSrc(sticker) {
+				if (this.schemas&&this.schemas[sticker]) {
+					return this.schemas[sticker].image_url;
+				}
+				const headStr = 'https://community.steamstatic.com/economy/image/';
+				return sticker.image_url&&!sticker.image_url.includes(headStr) ? headStr + sticker.image_url : sticker.image_url;
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.sticket-container {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+
+	.sticket-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.img {
+		margin-right: 5rpx;
+	}
+
+	.wear {
+		font-size: 8rpx;
+		color: $app-background;
+		text-align: center;
+	}
+</style>

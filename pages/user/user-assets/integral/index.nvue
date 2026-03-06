@@ -1,0 +1,278 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.integral.title')" :autoBack="true" bgColor="#6471bf" :titleStyle="{color:'#fff'}"
+			leftIconColor="#fff" placeholder>
+			<view slot="right">
+				<text class="right-text" @click="toDetail()">{{ i18n.t('app.user.wallet.integral_details') }}</text>
+			</view>
+		</u-navbar>
+		<view class="container">
+			<view class="header">
+				<text class="integral"
+					v-if="userInfo.fund">{{userInfo.fund.integral ? userInfo.fund.integral : 0}}</text>
+				<u-icon class="info-icon" name="info-circle-fill" @click="toSpecification()" color="#fff"
+					size="20"></u-icon>
+			</view>
+			<view class="content">
+				<text class="title">{{i18n.t('app.user.integral.draw')}}</text>
+				<view class="points-draw" @click="toDraw()">
+					<view class="left">
+						<text class="title">{{i18n.t('app.user.integral.draw')}}</text>
+						<text class="text">消耗：1000积分/次</text>
+						<text class="text">时间：暂定</text>
+					</view>
+					<view class="right">
+						<image class="img" src="/static/image/user/icon/draw-icon.png"></image>
+					</view>
+				</view>
+				<view class="exchange-container">
+					<text class="title">{{i18n.t('app.user.equity.card')}}</text>
+					<ul class="card-coupons">
+						<li class="coupons" v-for="item in couponsList" :key="item.type">
+							<view class="coupons-name" :style="getBackGround(item.background)">
+								<text class="name">
+									{{ item.desc }}
+								</text>
+								<text class="integral">
+									{{ item.value }}{{ i18n.t('app.user.integral.unit') }}
+								</text>
+							</view>
+							<view class="coupons-desc">
+								<text class="validity" v-if="item.validate > 0">
+									{{ i18n.t('app.user.coupon.validity')}}:{{ item.validate }}
+								</text>
+								<button type="primary" class="exchange" size="mini" @click="exchange(item.type)">
+									{{ i18n.t('app.user.coupon.exchange') }}
+								</button>
+							</view>
+						</li>
+					</ul>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		userInfoApi,
+		GetCouponsListApi,
+		CouponsExchangeApi
+	} from '@/api/modules/user.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				userInfo: {},
+				couponsList: []
+			}
+		},
+		mounted() {
+			this.getUserInfo();
+			this.getCouponsList();
+		},
+		methods: {
+			async getUserInfo() {
+				const res = await userInfoApi();
+				if (res.code != 0) return;
+				this.userInfo = res.datas;
+			},
+			toDraw(){
+				uni.$u.toast(this.i18n.t('app.system.message.not_open'));
+				return;
+				uni.$u.route('/pages/user/user-assets/integral/draw');
+			},
+			toDetail() {
+				uni.$u.route('/pages/user/user-assets/wallet/fund-integral');
+			},
+			toSpecification() {
+				uni.$u.route('/pages/user/points/specification');
+			},
+			getBackGround(background) {
+				return {
+					background: background
+				}
+			},
+			async getCouponsList() {
+				const res = await GetCouponsListApi();
+				if (res.code != 0) return;
+				this.couponsList = res.datas;
+				this.couponsList.forEach((item, index) => {
+					if (index == 0) {
+						item.background = '#fb8402';
+					}
+					if (index == 1) {
+						item.background = '#752d17';
+					}
+				});
+			},
+			async exchange(type) {
+				if (type == undefined || !type) {
+					return;
+				}
+				const res = await CouponsExchangeApi({
+					type: type
+				});
+				uni.$u.toast(res.datas);
+				if(res.code==0){
+					this.userInfo = {};
+					this.getUserInfo();
+				}
+			}
+		}
+	}
+</script> 
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+	.container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.header {
+		width: 750rpx;
+		height: 200rpx;
+		background: $app-background-blue;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+
+		.integral {
+			font-size: $font-size-xl;
+			color: $app-background;
+		}
+
+		.info-icon {
+			position: absolute;
+			right: 250rpx;
+		}
+	}
+	
+	.right-text{
+		font-size: $font-size-md;
+		color: $app-background;
+	}
+
+	.content {
+		width: 750rpx;
+		padding: 20rpx;
+	}
+
+	.points-draw {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 20rpx;
+		margin-bottom: 40rpx;
+		background: #8491c8;
+		border-radius: 10rpx;
+
+		.left {
+			width: 380rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			justify-content: flex-start;
+
+			.title {
+				color: $app-background;
+				font-size: $font-size-md;
+				font-weight: bold;
+				margin-bottom: 20rpx;
+				text-align: left;
+			}
+
+			.text {
+				color: $app-background;
+				font-size: $font-size-md;
+				margin: 6rpx 0;
+				text-align: left;
+			}
+		}
+
+		.right {
+			width: 300rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+
+			.img {
+				width: 200rpx;
+				height: 200rpx;
+			}
+		}
+	}
+
+	.exchange-container {
+		width: 710rpx;
+	}
+
+	.title {
+		color: $app-text-primary;
+		font-size: $font-size-md;
+		margin-bottom: 20rpx;
+	}
+
+	.card-coupons {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding: 10rpx 0 20rpx;
+	}
+	
+	.coupons {
+		width: 330rpx;
+		margin: 0 15rpx;
+		padding: 0rpx 0 20rpx;
+	
+		.coupons-name {
+			display: flex;
+			flex-direction: row;
+			padding: 10rpx 6rpx;
+			justify-content: space-between;
+	
+			.name {
+				text-align: left;
+				color: $app-background;
+				font-size: $font-size-md;
+			}
+	
+			.integral {
+				text-align: right;
+				color: $app-background;
+				font-size: $font-size-md;
+			}
+		}
+	
+		.coupons-desc {
+			height: 140rpx;
+			padding: 10rpx 6rpx;
+			position: relative;
+			background-color: $app-surface;
+			border: 1rpx solid $app-surface-elevated;
+	
+			.validity {
+				font-size: $font-size-md;
+				color: $app-text-primary;
+			}
+	
+			.exchange {
+				position: absolute;
+				bottom: 10rpx;
+				right: 10rpx;
+				background-color: $app-text-primary;
+				border: 1rpx solid $app-text-primary;
+			}
+		}
+	}
+</style>

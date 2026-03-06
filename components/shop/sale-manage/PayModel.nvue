@@ -1,0 +1,113 @@
+<template>
+	<view class="pay-model">
+		<text class="title">{{ i18n.t("app.trade.buy.pay_title") }}</text>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.trade.buy.pay_text") }}</text>
+			<text class="value">{{currencySymbol + ' ' + amount }}</text>
+		</view>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.trade.buy.pay_text_2") }}</text>
+			<text class="value">{{ Math.floor(amount) }}</text>
+		</view>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.trade.buy.pay_text_3") }}</text>
+		</view>
+		<view class="footer">
+			<text class="cancel btn" @click="cancel()">{{ i18n.t("app.common.cancel") }}</text>
+			<text class="confirm btn" @click="confirm()">{{ i18n.t("app.common.confirm") }}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config';
+	import i18n from '@/utils/locales/i18n';
+
+	export default {
+		props: {
+			amount: {
+				type: Number,
+				default: 0
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+			}
+		},
+		methods: {
+			cancel() {
+				this.$emit("cancel");
+			},
+			confirm() {
+				this.$emit("confirm");
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	
+	.pay-model {
+		width: 680rpx;
+		background: $app-background;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 30rpx 20rpx;
+	}
+	
+	.title{
+		font-size: $font-size-md;
+		color: $app-text-primary;
+		font-weight: bold;
+		margin-bottom: 20rpx;
+	}
+	
+	.content{
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		margin: 5rpx 0;
+		
+		.label{
+			font-size: $font-size-md;
+			color: $app-text-primary;
+		}
+		
+		.value{
+			font-size: $font-size-md;
+			color: #eea20e;
+			margin-left: 10rpx;
+		}
+	}
+	
+	.footer {
+		width: 420rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: 20rpx;
+	
+		.cancel {
+			background: #45536d;
+		}
+	
+		.confirm {
+			background: #4774c9;
+		}
+	
+		.btn {
+			width: 140rpx;
+			color: $app-background;
+			text-align: center;
+			padding: 14rpx 0;
+			font-size: $font-size-md;
+		}
+	}
+</style>

@@ -1,0 +1,114 @@
+<!-- 公告详情 -->
+<template>
+	<view>
+		<u-navbar :title="item.title" :autoBack="true" placeholder></u-navbar>
+		<view class="container">
+			<view class="create-info">
+				<view class="item">
+					<text class="label">{{i18n.t("app.system.notice.author")}}:</text>
+					<text class="text">{{item.createName}}</text>
+				</view>
+				<view class="item">
+					<text class="label">{{i18n.t("app.system.notice.publish_time")}}:</text>
+					<text class="text">{{item.createTime}}</text>
+				</view>
+			</view>
+			<view class="context">
+				<text class="text">
+					{{getMessage(item.content)}}
+				</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		GetNoticeDetailApi,
+		ReadMessageApi
+	} from "@/api/modules/notify.js";
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				id: null,
+				item: {},
+				pager: {
+					page: 1,
+					pageSize: 20,
+					total: 0
+				}
+			}
+		},
+		onLoad(options) {
+			this.id = options.id;
+		},
+		mounted() {
+			this.getNoticeBean();
+		},
+		methods: {
+			async getNoticeBean() {
+				const res = await GetNoticeDetailApi({
+					id: this.id,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize
+				});
+				if (res.code == 0) {
+					this.item = res.datas;
+					this.item.createTime = uni.$u.timeFormat(this.item.createTime * 1000,
+						'yyyy-mm-dd hh:MM:ss');
+				}
+			},
+			getMessage(text) {
+				if (text) {
+					return text.replace(/<[^>]*>/g, '');
+				}
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.container {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.create-info {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		padding: 20rpx;
+
+		.item {
+			display: flex;
+			flex-direction: row;
+			margin-right: 30rpx;
+
+			.label {
+				color: $app-text-secondary;
+				font-size: $font-size-sm;
+			}
+
+			.text {
+				color: $app-text-secondary;
+				font-size: $font-size-sm;
+				margin-left: 6rpx;
+			}
+		}
+	}
+
+	.context {
+		width: 750rpx;
+		padding: 10rpx 20rpx;
+
+		.text {
+			font-size: $font-size-md;
+		}
+	}
+</style>

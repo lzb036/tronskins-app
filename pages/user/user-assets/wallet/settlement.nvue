@@ -1,0 +1,340 @@
+<!-- 待结算明细 -->
+<template>
+	<view style="background-color: #fff;flex: 1;">
+		<u-skeleton :loading="isLoading" rows="10">
+			<view class="settlement">
+				<u-tabs :current="currentTab" :list="tabs"
+					:style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}" :activeStyle="{
+							fontSize:'24rpx',
+						    color: '#2a2a2a',
+							fontWeight:'bold'
+						}" :inactiveStyle="{
+							fontSize:'24rpx',
+						    color: '#888',
+						}" itemStyle="padding:10rpx 20rpx;height: 24px;" lineHeight="0">
+					<view slot="left" style="padding-left: 10rpx;">
+						<u-icon name="arrow-left" size="16" color="#4a4a4a" bold @click="navigateBack()"></u-icon>
+					</view>
+				</u-tabs>
+				<text class="notice">{{ i18n.t('app.user.wallet.unsettled_tips') }}</text>
+				<list-refresh :dataList="list" :total="list.length" :height="88" @refresh="refresh()" @loadMore="loadMore()">
+					<template #item="{ item }">
+						<view class="settlement-item" @click="toOrderDetail(item)">
+							<view class="item-header">
+								<text class="protection-time">{{ protectionTime(item.protection_time) }}</text>
+								<u-count-down
+								  v-if="item.protection_time && item.status==5"
+								  :time="getRemainTime(item.protection_time)"
+								  :format="`DD${i18n.t('app.common.day')} HH:mm:ss`"
+								  autoStart
+								/>
+							</view>
+							<view class="item-info" v-if="item.details.length===1">
+								<PhaseItem class="item" :item="item.details[0]"
+									:schema="schemas[item.details[0].market_hash_name]" :width="180"
+									:schemas="stickers"></PhaseItem>
+								<view class="price-wrap">
+									<view class="left">
+										<text
+											class="market-name">{{item.details[0].market_name || item.details[0].market_hash_name}}</text>
+										<text class="wear"
+											v-if="item.details[0].paint_wear">{{item.details[0].paint_wear}}</text>
+										<wear-progress-bar v-if="item.details[0].paint_wear"
+											:paintWear="item.details[0].paint_wear" :width="235"></wear-progress-bar>
+									</view>
+									<view class="right">
+										<text class="market-price">{{currencySymbol + ' ' + item.price}}</text>
+									</view>
+								</view>
+							</view>
+							<view class="item-info" v-else>
+								<view class="item-details-list">
+									<PhaseItem class="item" v-for="(detail, idx) in item.details.slice(0, 3)" :key="idx"
+									:item="detail" :schema="schemas[detail.market_hash_name]" :width="180"
+									:schemas="stickers"></PhaseItem>
+								</view>
+								<view class="multiple-right">
+									<text class="item-nums" :style="getNumsStyle(item.details.length)">+{{ item.details.length - 3 }}</text>
+									<text class="total-cost" v-if="item.price">{{ currencySymbol + ' ' + item.price }}</text>
+								</view>
+							</view>
+						</view>
+					</template>
+				</list-refresh>
+			</view>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import PhaseItem from '@/components/game-item/PhaseItem.nvue';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import {
+		userSettlementListApi
+	} from '@/api/modules/user.js';
+
+	export default {
+		components: {
+			PhaseItem,
+			ListRefresh,
+			WearProgressBar
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				schemas: {},
+				stickers: {},
+				users: {},
+				list: [],
+				timeData: null,
+				isLoading: false,
+				tabs: [{
+					name: i18n.t('app.user.wallet.unsettled_details'),
+					value: "settlement"
+				}],
+				pager: {
+					page: 1,
+					pageSize: 10,
+				}
+			}
+		},
+		created() {
+			this.refresh();
+		},
+		methods: {
+			getNumsStyle(length) {
+				if (length <= 3) {
+					return {
+						opacity: 0
+					}
+				}
+				return {
+					opacity: 1
+				}
+			},
+			toOrderDetail(item) {
+				uni.$u.route('/pages/shop/order-manage/order-purchase-detail', {
+					item: encodeURIComponent(JSON.stringify(item)),
+					schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+					users: encodeURIComponent(JSON.stringify(this.users)),
+					stickers: encodeURIComponent(JSON.stringify(this.stickers)),
+				});
+			},
+			onChange(e) {
+				this.$nextTick(() => {
+					this.timeData = e;
+					let days = e.days;
+					let hours = e.hours;
+					let minutes = e.minutes;
+					let remainingHours = hours + (minutes && minutes > 0 ? 1 : 0);
+					if (remainingHours % 24 == 0) {
+						days += 1;
+						remainingHours -= 24;
+					}
+					this.timeData.days = days;
+					this.timeData.hours = remainingHours;
+				})
+				
+			},
+			getRemainTime(endTime) {
+			  // endTime 是秒，组件要毫秒
+			  return endTime * 1000 - Date.now();
+			},
+			async getSettlementList() {
+				let params = {
+					page: this.page,
+					pageSize: this.pageSize
+				}
+				const res = await userSettlementListApi(params);
+				console.log(res)
+				if (res && res.code == 0) {
+					this.schemas = res.datas.schemas;
+					this.list = res.datas.records;
+					this.users = res.datas.users;
+					this.stickers = res.datas.stickers;
+				}
+			},
+			refresh() {
+				try {
+					this.isLoading = true;
+					this.schemas = {};
+					this.list = [];
+					this.users = {};
+					this.stickers = {};
+					this.getSettlementList();
+				} catch (e) {
+					console.log(e)
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getSettlementList();
+			},
+			protectionTime(time) {
+				return uni.$u.timeFormat(time, 'yyyy-mm-dd hh:MM');
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			navigateBack() {
+				uni.navigateBack();
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+
+	.settlement {
+		width: 750rpx;
+	}
+
+	.notice {
+		width: 750rpx;
+		color: $app-text-thirdly;
+		background: $app-surface-elevated;
+		font-size: $font-size-sm;
+		padding: 15rpx 20rpx;
+	}
+
+	.settlement-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx;
+	}
+
+	.item-header {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+
+		.protection-time {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.multiple-right {
+		width: 150rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: flex-end;
+		justify-content: center;
+	}
+
+	.item-info {
+		width: 710rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding: 10rpx 0;
+
+		.item-details-list {
+			width: 560rpx;
+			display: flex;
+			flex-direction: row;
+			overflow: hidden;
+		}
+
+		.item {
+			margin-right: 10rpx;
+		}
+
+		.item-nums {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			margin-left: 5rpx;
+			padding: 10rpx 0;
+		}
+
+		.total-cost {
+			width: 110rpx;
+			font-size: $font-size-md;
+			color: $app-text-price;
+			text-align: right;
+			font-weight: bold;
+			padding: 10rpx;
+			padding-right: 0;
+		}
+
+		.price-wrap {
+			width: 525rpx;
+			height: 52px;
+			display: flex;
+			flex-direction: row;
+			align-items: flex-start;
+			justify-content: center;
+			padding: 10rpx 0 0 10rpx;
+			position: relative;
+
+			.left {
+				width: 350rpx;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-start;
+			}
+
+			.right {
+				width: 140rpx;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-end;
+				justify-content: center;
+			}
+
+			.market-name {
+				width: 350rpx;
+				font-size: $font-size-md;
+				color: $app-text-secondary;
+				lines: 1;
+				text-overflow: ellipsis;
+			}
+
+			.market-price {
+				font-size: $font-size-md;
+				color: $app-text-price;
+				font-weight: bold;
+				text-align: right;
+				padding-top: 20rpx;
+				padding-right: 0;
+			}
+
+			.wear {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				padding: 5rpx 0;
+			}
+		}
+	}
+
+	.down-time {
+		width: 210rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+	}
+
+	.time {
+		@include flex;
+		align-items: center;
+
+		&__item {
+			color: orange;
+			font-size: $font-size-count-time;
+		}
+	}
+</style>

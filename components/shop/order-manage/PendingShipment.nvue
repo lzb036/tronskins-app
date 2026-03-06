@@ -1,0 +1,527 @@
+<!-- 待发货 -->
+<template>
+	<view>
+		<sort-time-filter :appid="appid" :itemName="itemName" :tags="tags" @ascTime="refresh($event,'asc')"
+			@keywords="refresh($event,'keywords')" @filterType="refresh($event,'type')"></sort-time-filter>
+		<view class="shipment-container">
+			<u-skeleton v-if="total !== null" class="shipment-container" :loading="isLoading" rows="10">
+				<list-refresh style="width: 720rpx;" :dataList="list" :total="total" height="84" @refresh="refresh()"
+					@loadMore="loadMore()">
+					<template #item="{ item }">
+						<view class="pending-shopment-item" @click="onRowClick(item, $event)">
+							<view class="item-header" v-if="item.details&&item.details.length>1">
+								<text class="market-price">{{currencySymbol}}&nbsp;{{calItemPirce(item.details)}}</text>
+								<view class="item-header-right" v-if="isDownTime(item)">
+									<u-icon name="clock" color="orange"></u-icon>
+									<u-count-down v-if="isDownTime(item)" :time="getItemDownTime(item)"
+										format="HH:mm:ss" @change="endDownTime($event,item)"></u-count-down>
+								</view>
+							</view>
+							<view class="item-container" v-for="record in item.details">
+								<view class="left" :style="getLeftStyle(item.details.length)">
+									<base-item class="base-item" :item="record"
+										:schema="schemas[record.market_hash_name]" :isExterior="false"
+										:isBorderRadius="true" :width="140" :height="86"></base-item>
+									<view class="item-info">
+										<text class="market-name"
+											:style="getMarkNameStyle(item.details.length)">{{record.market_name}}</text>
+										<text class="item-count"
+											v-if="item.details&&item.details.length==1&&record.count>1">x&nbsp;{{ record.count }}</text>
+									</view>
+								</view>
+								<text class="item-num"
+									v-if="item.details&&item.details.length>1">x&nbsp;{{ record.count }}</text>
+								<view class="right" v-if="item.details&&item.details.length==1">
+									<view class="down-count" v-if="isDownTime(item)">
+										<u-icon name="clock" color="orange"></u-icon>
+										<u-count-down v-if="isDownTime(item)" :time="getItemDownTime(item)"
+											format="HH:mm:ss" @change="endDownTime($event,item)"></u-count-down>
+									</view>
+									<text
+										class="market-price">{{currencySymbol}}&nbsp;{{calItemPirce(item.details)}}</text>
+								</view>
+							</view>
+							<view class="item-footer">
+								<view v-if="item.user" class="item-buyer-user"
+									:style="getBuyerBoxStyle(item.user.nickname)">
+									<image class="buyer-user-avatar" src="/static/image/login/steam-icon.png"></image>
+									<text class="buyer-user-name" v-if="item.user&&item.user.nickname"
+										:style="getNicknameStyle(item.user.nickname)">{{item.user.nickname}}</text>
+									<text class="buyer-user-level"
+										v-if="item.user&&item.user.level">{{item.user.level}}</text>
+									<image class="buyer-user-yearsLevel" v-if="item.user&&item.user.yearsLevel"
+										:src="`https://community.cloudflare.steamstatic.com/public/images/badges/02_years/steamyears${item.user.yearsLevel}_80.png`">
+									</image>
+									<view @click.stop="refreshBuyer($event,item)">
+										<u-icon name="reload" size="18" color="#888"></u-icon>
+									</view>
+								</view>
+								<text class="buyer-deviled-btn" v-if="item.status == 2"
+									@click.native.stop="openSend(item)">
+									{{i18n.t('app.market.product.deliver')}}
+								</text>
+								<text class="success-btn"
+									v-if="item.status == 3">{{i18n.t('app.steam.message.confirm_quote')}}</text>
+								<text :class="item.status ==-1?'gray-status':'red-status'"
+									v-if="![2,3].includes(item.status)">{{ item.statusName }}</text>
+							</view>
+						</view>
+					</template>
+
+				</list-refresh>
+			</u-skeleton>
+		</view>
+		<u-popup safeAreaInsetTop mode="right" :show="show" @close="show = false">
+			<deliver-drawer :buyer="detailItem && detailItem.user ? detailItem.user.id : ''"
+				:status="detailItem ? detailItem.status : ''" @success="refresh()" @close="show = false">
+			</deliver-drawer>
+		</u-popup>
+	</view>
+
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import config from '@/config/index.js'
+	import BaseItem from '@/components/game-item/index.nvue'
+	import ListRefresh from '@/components/layout/list-refresh.nvue'
+	import SortTimeFilter from '@/components/layout/SortTimeFilter.nvue'
+	import DeliverDrawer from '@/components/shop/order-manage/DeliverDrawer.nvue'
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js'
+	import {
+		ShopPendingShipmentListApi
+	} from '@/api/modules/shop/shop-product.js'
+	import {
+		GetSteamUserInfoApi
+	} from '@/api/modules/steam.js'
+
+	export default {
+		components: {
+			BaseItem,
+			ListRefresh,
+			DeliverDrawer,
+			SortTimeFilter
+		},
+		data() {
+			return {
+				i18n,
+				appid: getGameType(),
+				currencySymbol: config.currencySymbol,
+				detailItem: null,
+				list: [],
+				showList: [],
+				schemas: {},
+				usersMap: {}, // 缓存 users 映射
+				stickers: {},
+				tags: '',
+				itemName: '',
+				marketName: '',
+				ascTime: false,
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				show: false,
+				total: null,
+				isLoading: false,
+			}
+		},
+		created() {
+			this.refresh()
+		},
+		mounted() {
+			uni.$on('delivery-submit', () => this.refresh())
+			uni.$on('update-trade-message-shipping', () => {
+				/* */
+			})
+		},
+		methods: {
+			/* ===============  业务方法  =============== */
+			onRowClick(item, e) {
+				if (e.target.classList && e.target.classList.contains('buyer-deviled-btn')) return
+				this.openSend(item)
+			},
+			openSend(item) {
+				this.detailItem = item
+				this.show = true
+			},
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async refreshBuyer(e, item) {
+				e.stopPropagation()
+				uni.showLoading({
+					title: this.i18n.t('app.system.tips.please_wait'),
+					mask: true
+				})
+				const {
+					avatar,
+					level,
+					nickname,
+					yearsLevel,
+					id
+				} = item.user
+				// 置空再请求
+				Object.assign(item.user, {
+					avatar: '',
+					level: '',
+					nickname: '',
+					yearsLevel: ''
+				})
+				const res = await GetSteamUserInfoApi({
+					id
+				})
+				uni.hideLoading()
+				if (res.code === 0) {
+					const tar = this.list.find(i => i.user.id === id)
+					if (tar) {
+						tar.user.avatar = res.datas?.avatar ?? avatar
+						tar.user.level = res.datas?.level ?? level
+						tar.user.nickname = res.datas?.nickname ?? nickname
+						tar.user.yearsLevel = res.datas?.yearsLevel ?? yearsLevel
+						this.$forceUpdate()
+					}
+				}
+			},
+			calItemPirce(list) {
+				let total = 0
+				if (Array.isArray(list)) {
+					list.forEach(it => {
+						total += it.count > 1 ? it.total_price : it.price
+					})
+				}
+				return total > 0 ? total.toFixed(2) : total
+			},
+			/* ===============  列表&分页  =============== */
+			async getPendingShipmentList() {
+				try {
+					const raw = {
+						appId: Number(this.appid),
+						isload: true,
+						page: this.pager.page,
+						pageSize: this.pager.pageSize,
+						asc: this.ascTime,
+						field: 'time',
+						keywords: this.marketName,
+						tags: this.tags,
+						itemName: this.itemName,
+						statusList: [2, 3, 9]
+					}
+					const payload = Object.entries(raw).reduce((acc, [k, v]) => {
+						if (v !== '' && v != null) acc[k] = v
+						return acc
+					}, {})
+					const res = await ShopPendingShipmentListApi(payload)
+					if (res && res.datas) {
+						this.usersMap = res.datas.users || {}
+						const sends = (res.datas.sends || []).map(item => ({
+							...item,
+							user: this.usersMap[item.buyer] || {},
+							details: this.getSameSchemaList(item.details || []),
+							type: (item.details || []).some(d => d.type == 2) ? 2 : 1
+						}))
+						this.list = this.list.concat(sends)
+						this.schemas = Object.assign({}, this.schemas, res.datas.schemas)
+						this.stickers = res.datas.stickers || {}
+						this.total = res.datas.pager?.total ?? 0
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			refresh(e, type) {
+				uni.$u.debounce(async () => {
+					this.isLoading = true
+					if (type === 'asc') this.ascTime = e
+					if (type === 'keywords') this.marketName = e
+					if (type === 'type') {
+						this.tags = e.tags;
+						this.itemName = e.itemName
+					}
+					this.list = [];
+					this.pager.page = 1
+					await this.getPendingShipmentList()
+					this.isLoading = false
+				}, 500)
+			},
+			loadMore() {
+				this.pager.page++
+				this.getPendingShipmentList()
+			},
+			/* ===============  工具函数  =============== */
+			getSameSchemaList(details = []) { // ← 根层级方法
+				if (!Array.isArray(details)) return []
+				const grouped = {}
+				details.forEach(it => {
+					const id = it.schema_id
+					if (!grouped[id]) grouped[id] = {
+						...it,
+						count: 0,
+						total_price: 0
+					}
+					grouped[id].count++
+					grouped[id].total_price += Number(it.price) || 0
+				})
+				return Object.values(grouped)
+			},
+			getLeftStyle(len) {
+				return {
+					width: len > 1 ? '570rpx' : '510rpx'
+				}
+			},
+			getMarkNameStyle(len) {
+				return {
+					width: len > 1 ? '420rpx' : '350rpx'
+				}
+			},
+			getBuyerBoxStyle(nickname) {
+				return nickname?.length > 14 ? {
+					width: '355rpx'
+				} : {}
+			},
+			getNicknameStyle(nickname) {
+				return nickname?.length > 14 ? {
+					width: '130rpx'
+				} : {}
+			},
+			/**
+			 * 倒计时：收货
+			 * @param {number} type：1 => 出售
+			 * @param {number} type：2 => 供应
+			 * @param {number} status:1 =>
+			 * @param {number} status:2 => 待发货
+			 * @param {number} status:3 => 发货待确认
+			 */
+			getItemDownTime(item) {
+			    const createTime = item.change_time * 1000;
+			    const shippingHours = this.getShippingHours(item);
+			    const deadline = createTime + shippingHours * 3600 * 1000;
+			    return Math.max(0, deadline - Date.now());
+			},
+			getShippingHours(item) {
+			    if (item.status === 3) return 0.5;
+			    if (item.type === 2 && item.status === 2) return 0.5;
+			    if (item.type === 1 && item.status === 2) return 18;
+			    if (item.status === 4) return 18;
+			    return 18; // 默认
+			},
+			endDownTime(e, item) {
+				if (!e || (!e.days && !e.hours && !e.minutes && !e.seconds)) {
+					const last = uni.getStorageSync('last_delivery_loaded_time')
+					if (!last || Date.now() - last > 10000) {
+						uni.removeStorageSync('last_delivery_loaded_time')
+						this.refresh()
+						uni.setStorageSync('last_delivery_loaded_time', Date.now())
+					}
+				}
+			},
+			isDownTime(item) {
+				return this.getItemDownTime(item) > 0
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	.shipment-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		background: #f0f0f0;
+		padding: 20rpx 15rpx;
+	}
+
+	.market-price {
+		font-size: 30rpx;
+		color: #3d3d3d;
+		font-weight: bold;
+	}
+
+	.pending-shopment-item {
+		width: 720rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding: 15rpx 20rpx;
+		border-bottom: 1rpx solid #f4f4f4;
+		background: #fff;
+		margin-bottom: 20rpx;
+		border-radius: 10rpx;
+
+		.item-header {
+			width: 680rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding-bottom: 10rpx;
+			margin-bottom: 20rpx;
+			border-bottom: 2rpx solid #f0f0f0;
+
+			.item-header-right {
+				display: flex;
+				flex-direction: row;
+				position: relative;
+				align-items: center;
+				justify-content: flex-end;
+			}
+		}
+
+		.item-container {
+			width: 680rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding-bottom: 2rpx;
+
+			.left {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				justify-content: flex-start;
+
+				.base-item {
+					margin-left: 5rpx;
+					margin-top: 10rpx;
+				}
+
+				.item-info {
+					display: flex;
+					flex-direction: column;
+					align-items: flex-start;
+					justify-content: center;
+					padding-left: 14rpx;
+				}
+
+				.item-count {
+					font-size: 28rpx;
+					color: #888;
+				}
+
+				.market-name {
+					text-align: left;
+					font-size: 26rpx;
+					color: #888;
+					text-overflow: ellipsis;
+					lines: 1;
+				}
+			}
+
+			.right {
+				display: flex;
+				flex-direction: column;
+				align-items: flex-end;
+				justify-content: center;
+			}
+
+			.down-count {
+				display: flex;
+				flex-direction: row;
+			}
+
+			.item-num {
+				font-size: 28rpx;
+				color: #888;
+			}
+		}
+
+		.item-footer {
+			width: 680rpx;
+			display: flex;
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+			padding-top: 10rpx;
+
+			.buyer-deviled-btn {
+				width: 140rpx;
+				height: 50rpx;
+				line-height: 40rpx;
+				margin-top: 10rpx;
+				padding-top: 6rpx;
+				color: #fff;
+				font-size: 26rpx;
+				text-align: center;
+				background-color: rgb(73, 115, 199);
+				border-radius: 10rpx;
+			}
+
+			.success-btn {
+				font-size: 22rpx;
+				color: #008b00;
+				margin-top: 10rpx;
+			}
+
+			.gray-status {
+				font-size: 22rpx;
+				color: gray;
+				margin-top: 10rpx;
+			}
+
+			.red-status {
+				font-size: 22rpx;
+				color: #c22121;
+				margin-top: 10rpx;
+			}
+
+			.item-buyer-user {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				flex-wrap: wrap;
+				padding: 4rpx 8rpx;
+				background-color: rgb(243, 245, 251);
+				border-radius: 2rpx;
+				margin-top: 10rpx;
+
+				.buyer-user-avatar {
+					width: 40rpx;
+					height: 40rpx;
+					background-color: #000;
+					border-radius: 25rpx;
+					margin-left: 5rpx;
+				}
+
+				.buyer-user-name {
+					text-align: left;
+					font-size: 24rpx;
+					color: #4a4a4a;
+					margin-left: 5rpx;
+					margin-right: 10rpx;
+					padding-left: 5rpx;
+					overflow: hidden;
+					lines: 1;
+					text-overflow: ellipsis;
+				}
+
+				.buyer-user-yearsLevel {
+					width: 45rpx;
+					height: 45rpx;
+					margin-right: 10rpx;
+				}
+
+				.buyer-user-level {
+					width: 45rpx;
+					height: 45rpx;
+					line-height: 40rpx;
+					border: 4rpx solid #9b9b9b;
+					border-radius: 5rpx;
+					text-align: center;
+					color: #4a4a4a;
+					font-size: 20rpx;
+					border-radius: 30rpx;
+					margin-right: 10rpx;
+					padding-top: -2rpx;
+				}
+			}
+		}
+	}
+</style>

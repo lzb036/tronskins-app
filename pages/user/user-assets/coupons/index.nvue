@@ -1,0 +1,91 @@
+<!-- 权益卡券 -->
+<template>
+	<view>
+		<u-tabs :current="currentTab" @click="handleTabClick" :list="list"
+			:style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}" :activeStyle="{
+				fontSize:'24rpx',
+			    color: '#2a2a2a',
+				fontWeight:'bold'
+			}" :inactiveStyle="{
+				fontSize:'24rpx',
+			    color: '#888',
+			}" itemStyle="padding:10rpx 20rpx;height: 24px;" lineHeight="0">
+			<view slot="left" style="padding-left: 10rpx;">
+				<u-icon name="arrow-left" size="16" color="#4a4a4a" bold @click="back()"></u-icon>
+			</view>
+			<view slot="right" style="padding-right: 20rpx;">
+				<game-switcher @gameChange="appidChange($event)"></game-switcher>
+			</view>
+		</u-tabs>
+		<swiper :style="{height:getSystemInfo().windowHeight- 44 - getSystemInfo().statusBarHeight + 'px'}"
+			:current="currentTab" :duration="300" @change="handleSwiperChange" class="swiper-box">
+			<swiper-item>
+				<MyInterest></MyInterest>
+			</swiper-item>
+			<swiper-item>
+				<MyCoupon></MyCoupon>
+			</swiper-item>
+		</swiper>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import MyInterest from "./my-interest.nvue";
+	import MyCoupon from "./my-coupon.nvue";
+	import GameSwitcher from '@/components/layout/GameSwitcher.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		components: {
+			GameSwitcher,
+			MyInterest,
+			MyCoupon
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currentTab: 0,
+				list: [{
+						name: i18n.t("app.user.equity.title"),
+						value: "interest"
+					},
+					{
+						name: i18n.t("app.user.coupon.title"),
+						value: "card-coupons"
+					}
+				],
+			}
+		},
+		methods: {
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			handleTabClick(e) {
+				this.currentTab = e.index;
+			},
+			/**
+			 * 滑动切换tabs
+			 * @param {Object} e
+			 */
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+			},
+			appidChange() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+				}
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync()
+				return systemInfo;
+			},
+			back(){
+				uni.navigateBack();
+			}
+		},
+	}
+</script>

@@ -1,0 +1,257 @@
+<template>
+	<view class="login-container" :style="{ paddingTop: statusBarHeight + 'px' }">
+		<view class="header">
+			<u-icon class="back-arrow" name="arrow-leftward" color="#333" size="24" @click="goBack()"></u-icon>
+			<text class="title">{{i18n.t('app.user.login.token_loss')}}</text>
+		</view>
+		<view class="form-box">
+			<input v-model="form.email" class="login-input" type="text"
+				:placeholder="i18n.t('app.user.setting.email')"></input>
+			<input v-model="form.password" class="login-input" type="password"
+				:placeholder="i18n.t('app.user.setting.password')"></input>
+			<view class="email-box">
+				<input :maxlength="6" v-model="form.verificationCode" class="login-input" type="text"
+					:placeholder="i18n.t('app.user.login.enter_captcha')"></input>
+				<text :class="countdown > 0 ? 'reget-code disabled' : 'reget-code'"
+					@click="sendVerificationCode()">{{ countdown > 0 ? `${countdown}s` : i18n.t('app.user.guard.get_captcha') }}</text>
+			</view>
+			<u-button type="primary" shape="circle" :custom-style="loginButtonStyle" 
+				:disabled="!form.email || !form.verificationCode || !form.password"
+				@click="submitForm()"
+				:text="i18n.t('app.common.confirm')">
+			</u-button>
+		</view>
+	</view>
+</template>
+
+<script>
+import i18n from '@/utils/locales/i18n';
+import base64 from "base-64";
+import {
+	getLoginPubKeyApi,
+	EmailCodeSubmitApi,
+	tokenLostSubmitApi,
+} from '@/api/modules/login/auth.js';
+import {
+	clearAuthStorage
+} from '@/utils/storage/modules/user.js';
+
+export default {
+	data() {
+		return {
+			i18n: i18n,
+			form: {
+				email: '',
+				verificationCode: '',
+				password: ''
+			},
+			statusBarHeight: 0,
+			loginButtonStyle: {
+				height: '90rpx',
+				fontSize: '32rpx',
+				marginTop: '60rpx'
+			},
+			countdown: 0,
+			countdownTimer: null
+		}
+	},
+	created() {
+		const systemInfo = uni.getSystemInfoSync();
+		this.statusBarHeight = systemInfo.statusBarHeight || 0;
+	},
+	beforeUnmount() {
+		// 组件卸载时清除定时器
+		if (this.countdownTimer) {
+			clearInterval(this.countdownTimer);
+		}
+	},
+	methods: {
+		// 发送验证码 - 按照Web端逻辑调用接口
+		async sendVerificationCode() {
+			if (!this.form.email) {
+				uni.$u.toast(this.i18n.t('app.user.login.message.email_error'));
+				return;
+			}
+			if (!this.form.password) {
+				uni.$u.toast(this.i18n.t('app.user.login.message.password_error'));
+				return;
+			}
+			if (this.countdown > 0) {
+				return;
+			}
+
+			try {
+				const params = {
+					email: this.form.email.trim(),
+					purpose: 4,
+				};
+				const res = await EmailCodeSubmitApi(params);
+
+				if (res && res.code === 0) {
+					uni.$u.toast(this.i18n.t('app.user.login.message.send_to_email'));
+					
+					this.countdown = 300;
+					this.countdownTimer = setInterval(() => {
+						if (this.countdown > 0) {
+							this.countdown--;
+						} else if (this.countdownTimer) {
+							clearInterval(this.countdownTimer);
+							this.countdownTimer = null;
+						}
+					}, 1000);
+				} else {
+					uni.$u.toast(this.i18n.t('app.system.message.operation_failed'));
+				}
+			} catch (error) {
+				console.error('发送验证码失败:', error);
+				uni.$u.toast(this.i18n.t('app.system.message.operation_failed'));
+			}
+		},
+
+		// 密码加密（与 Web 端一致）
+		async encryptUserPassword(username, password) {
+			try {
+				const response = await getLoginPubKeyApi({
+					username: username.trim()
+				});
+				if (response?.code === 0 && response.datas) {
+					const publicKey = response.datas;
+					if (publicKey.length > 0) {
+						const pubKey = base64.decode(publicKey).toString();
+						const sm2Result = require('sm-crypto').sm2.doEncrypt(password, pubKey, 1);
+						return sm2Result;
+					}
+				}
+				return password;
+			} catch (error) {
+				console.error('密码加密失败:', error);
+				throw new Error('密码加密失败');
+			}
+		},
+
+		async submitForm() {
+			if (!this.form.email) {
+				uni.$u.toast(this.i18n.t('app.user.login.message.email_error'));
+				return;
+			}
+			if (!this.form.password) {
+				uni.$u.toast(this.i18n.t('app.user.login.message.password_error'));
+				return;
+			}
+			if (!this.form.verificationCode) {
+				uni.$u.toast(this.i18n.t('app.user.login.message.code_error'));
+				return;
+			}
+			try {
+				await this.handleTokenRemoveLogin(this.form.verificationCode);
+			} catch (error) {
+				console.error('提交失败:', error);
+				uni.$u.toast(this.i18n.t('app.common.operation.failed'));
+			}
+		},
+
+		async handleTokenRemoveLogin(code) {
+			try {
+				await clearAuthStorage();
+				const params = {
+					username: this.form.email.trim(),
+					password: this.form.password,
+					code: code.replace(/\s/g, ''),
+					userType: 0,
+				};
+
+				const encryptedPwd = await this.encryptUserPassword(params.username, params.password);
+				if (encryptedPwd) {
+					params.password = encryptedPwd;
+				}
+				const res = await tokenLostSubmitApi(params);
+
+				if (res.code === 0) {
+					uni.$u.toast(this.i18n.t('app.system.message.success'));
+					// 跳转到用户中心
+					setTimeout(() => {
+						uni.switchTab({ url: '/pages/user/user-center' });
+					}, 1000);
+				} else {
+					uni.$u.toast(this.i18n.t('app.system.message.operation_failed'));
+				}
+			} catch (error) {
+				console.error('令牌遗失登录失败:', error);
+				if (error.datas) {
+					uni.$u.toast(error.datas);
+				} else {
+					uni.$u.toast(this.i18n.t('app.system.message.operation_failed'));
+				}
+				throw error;
+			} finally {
+				uni.hideLoading();
+			}
+		},
+
+		// 返回上一页
+		goBack() {
+			uni.navigateBack();
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+
+	.login-container {
+		flex: 1;
+		padding: 0 40rpx;
+		background-color: $app-background;
+	}
+
+	.header {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		padding: 80rpx 0 30rpx 0;
+
+		.title {
+			font-size: $font-size-xl;
+			font-weight: bold;
+			color: $app-text-primary;
+		}
+
+		.back-arrow {
+			margin-right: 25rpx;
+			padding: 10rpx 15rpx 10rpx 0;
+		}
+	}
+
+	.email-box {
+		position: relative;
+
+		.reget-code {
+			height: 80rpx;
+			text-align: center;
+			font-size: $font-size-md;
+			padding: 22rpx 20rpx;
+			color: $app-link;
+			position: absolute;
+			top: 50rpx;
+			right: 10rpx;
+		}
+
+		.disabled {
+			color: $app-text-disabled;
+		}
+	}
+
+	.form-box {
+		.login-input {
+			height: 80rpx;
+			padding-left: 30rpx;
+			font-size: $font-size-md;
+			margin-top: 50rpx;
+			border-radius: 50rpx;
+			color: $app-text-primary;
+			background-color: $app-surface;
+		}
+	}
+</style>

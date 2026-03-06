@@ -1,0 +1,391 @@
+<!-- 求购列表组件 -->
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<list-refresh :height="244" :total="total" :dataList="list" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<view class="sale-item">
+					<BaseItem :imageUrl="schemas[item.schema_id].image_url" :phase="item.phase" :schema_id="item.schema_id"
+						:exterior="getExterior(schemas[item.schema_id])" :bg="getRarity(schemas[item.schema_id])"
+						:num="item.need" :width="156" :appid="appid" :clickable="false"></BaseItem>
+					<view class="sale-center">
+						<view class="sale-price">
+							<text class="price-label">$</text>
+							<text class="price-value">{{item.price}}</text>
+						</view>
+						<view class="attribute-box">
+							<text class="wear-label"
+								v-if="appid==730&&item.paint_wear_min&&Number(item.paint_wear_min)>=0">{{i18n.t('app.market.csgo.wear')}}:&nbsp;{{item.paint_wear_min +'-'+item.paint_wear_max}}</text>
+							<text class="phase" v-if="item.phase">{{item.phase}}</text>
+						</view>
+						<view class="sale-shop" @click="routeShop(item)" v-if="users">
+							<image class="user-img" :src="getImageLocal(users[item.userId].avatar)" mode=""></image>
+							<text class="user-name">{{users[item.userId].nickname}}</text>
+						</view>
+					</view>
+					<view class="sale-right">
+						<u-button v-if="!item.own" class="buy-btn" size="mini" color="#4674c9" :text="i18n.t('app.trade.supply.text')"
+							@click="supplySubmit(item)"></u-button>
+						<u-button v-if="item.own" class="own-btn" plain size="mini" color="#fd7f2d"
+							:text="i18n.t('app.inventory.price_change')" @click="updatePrice(item)"></u-button>
+						<u-button v-if="item.own" class="own-btn" plain size="mini" color="#4674c9"
+							:text="i18n.t('app.common.delete')" @click="deleteSubmit(item)"></u-button>
+					</view>
+				</view>
+			</template>
+		</list-refresh>
+		<u-popup :show="show" mode="center">
+			<view class="supply-container">
+				<text class="supply-title">{{ i18n.t('app.system.tips.title') }}</text>
+				<text class="text">{{ i18n.t("app.trade.supply.message.confirm") }}</text>
+				<view class="footer">
+					<text class="cancel btn" @click="cancel()">{{ i18n.t("app.common.cancel") }}</text>
+					<text class="confirm btn" @click="goDelivery()">{{ i18n.t("app.trade.deliver.go") }}</text>
+				</view>
+			</view>
+		</u-popup>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import {
+		GameItemBuyRequestListApi,
+		GameItemBuyRequestList2Api
+	} from '@/api/modules/market.js';
+	import {
+		OrderItemCancelBuyApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	export default {
+		props: ['schema_id', 'appid'],
+		components: {
+			ListRefresh,
+			BaseItem,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+				schemas: {},
+				users: {},
+				show: false,
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				total: null,
+				isLoading: false,
+			}
+		},
+		created() {
+			this.queryList();
+		},
+		mounted() {
+			uni.$on('order-supply-success', () => {
+				this.refresh();
+				uni.$u.toast(i18n.t("app.system.message.success"));
+				this.show = true;
+			});
+			uni.$on('change-price', () => {
+				this.refresh();
+			})
+		},
+		watch: {
+			schema_id(val, oldVal) {
+				if (val != oldVal) {
+					this.refresh();
+				}
+			}
+		},
+		methods: {
+			getExterior(schema) {
+				try {
+					return schema.tags.exterior
+				} catch (e) {
+
+				}
+			},
+			getRarity(schema) {
+				try {
+					return schema.tags.rarity.color
+				} catch (e) {
+
+				}
+			},
+			getImageLocal(avatar) {
+				let imagePath = 'https://www.tronskins.com/fms/image';
+				if (!avatar || typeof avatar !== 'string') {
+					return '/static/image/user/none.png';
+				}
+				return avatar.startsWith("http") ? avatar : imagePath + avatar;
+			},
+			async queryList() {
+				let res;
+				let params = {
+					appId: this.appid,
+					schemaId: this.schema_id,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+				}
+				if (isLogin()) {
+					res = await GameItemBuyRequestList2Api(params);
+				} else {
+					res = await GameItemBuyRequestListApi(params);
+				}
+				if (res.code == 0 && res.datas) {
+					if (res.datas.pager && res.datas.pager.current > res.datas.pager.pages) return;
+					this.users = res.datas.users;
+					this.schemas = res.datas.schemas;
+					this.list = this.list.concat(res.datas.assets);
+					this.total = res.datas.pager.total;
+				}
+			},
+			async refresh() {
+				try {
+					this.isLoading = true;
+					this.list = [];
+					this.pager.page = 1;
+					await this.queryList();
+				} catch (error) {
+					//TODO handle the exception
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.queryList();
+			},
+			/**
+			 * 供应
+			 * @param {Object} item
+			 */
+			supplySubmit(item) {
+				if (!isLogin()) {
+					uni.$u.toast(i18n.t('app.system.message.nologin'));
+					return;
+				}
+				uni.$u.route('/pages/shop/sale-manage/supply', {
+					id: item.id,
+					appid: this.appid,
+					schema_id: item.schema_id,
+					image_url: this.schemas[item.schema_id].image_url,
+					market_name: this.schemas[item.schema_id].market_name,
+					price: item.price,
+					nums: item.nums,
+				});
+			},
+			goDelivery() {
+				uni.switchTab({
+					url: '/pages/shop/shop-manage/index'
+				});
+			},
+			cancel() {
+				this.show = false;
+			},
+			/**
+			 * 取消求购
+			 * @param {Object} item
+			 */
+			async deleteSubmit(item) {
+				if (!isLogin()) {
+					uni.$u.toast(i18n.t('app.system.message.nologin'));
+					return;
+				}
+				uni.showModal({
+					title: i18n.t('app.trade.purchase.message.confirm_terminate'),
+					confirmText: i18n.t('app.common.confirm'),
+					cancelText: i18n.t('app.common.cancel'),
+					success: async (res) => {
+						if (res.confirm) {
+							try {
+								const res = await OrderItemCancelBuyApi({
+									id: item.id
+								})
+								if (res.code === 0) {
+									uni.$u.toast(i18n.t("app.system.message.success"));
+								} else {
+									uni.$u.toast(i18n.t("app.system.message.operation_failed"));
+								}
+								this.refresh();
+							} catch (error) {
+								//TODO handle the exception
+							}
+						}
+					}
+				});
+			},
+			/**
+			 * 求购改价
+			 * @param {Object} item
+			 */
+			updatePrice(item) {
+				uni.$u.route('/pages/shop/buying/update-price', {
+					item: encodeURIComponent(JSON.stringify(item)),
+					schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+				});
+			},
+			routeShop(item) {
+				uni.$u.route('/pages/user/user-shop/index', {
+					uuid: this.users[item.userId].uuid
+				});
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.supply-container {
+		width: 580rpx;
+		padding: 30rpx 25rpx;
+		background: $app-background;
+	}
+
+	.supply-title {
+		font-size: 32rpx;
+		font-weight: bold;
+		text-align: left;
+		color: $app-text-primary;
+	}
+
+	.text {
+		font-size: $font-size-md;
+		color: $app-text-primary;
+		margin: 30rpx 0;
+	}
+
+	.footer {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+
+		.cancel {
+			background: #45536d;
+		}
+
+		.confirm {
+			background: $app-link;
+		}
+
+		.btn {
+			width: 220rpx;
+			color: $app-background;
+			text-align: center;
+			padding: 14rpx 0;
+			font-size: 32rpx;
+		}
+	}
+
+	.sale-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+	}
+
+	.sale-center {
+		width: 314rpx;
+		display: flex;
+		flex-direction: column;
+		padding-left: 20rpx;
+	}
+
+	.sale-right {
+		width: 240rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: flex-end;
+		align-items: flex-end;
+
+		.buy-btn {
+			width: 120rpx;
+			height: 50rpx;
+			margin: 0 5rpx;
+		}
+
+		.own-btn {
+			width: 110rpx;
+			height: 50rpx;
+			margin: 0 5rpx;
+		}
+	}
+
+	.attribute-box {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: flex-start;
+		padding: 5rpx 0 8rpx;
+	}
+
+	.wear-label {
+		font-size: 24rpx;
+		color: $app-text-thirdly;
+		text-align: left;
+	}
+
+	.phase {
+		color: $app-background;
+		font-size: $font-size-xs;
+		background-color: $app-icon-active;
+		opacity: 0.8;
+		padding: 5rpx;
+		border-radius: 5rpx;
+		margin-left: 10rpx;
+	}
+
+	.sale-price {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 5rpx;
+
+		.price-label {
+			font-size: $font-size-sml;
+			color: $app-text-price;
+			margin-right: 6rpx;
+			font-weight: bold;
+		}
+
+		.price-value {
+			font-size: 30rpx;
+			color: $app-text-price;
+			font-weight: 300;
+			margin-right: 10rpx;
+			font-weight: bold;
+		}
+	}
+
+	.sale-shop {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+
+		.user-img {
+			width: 36rpx;
+			height: 36rpx;
+			border-radius: 50rpx;
+		}
+
+		.user-name {
+			font-size: $font-size-sm;
+			height: 30rpx;
+			text-align: left;
+			color: $app-text-primary;
+			padding-top: 3rpx;
+			padding-left: 10rpx;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+	}
+</style>

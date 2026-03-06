@@ -1,0 +1,35 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.market.product.title')" :autoBack="true" placeholder></u-navbar>
+		<game-market :market_name="market_name" :tags="tags" :itemName="itemName"></game-market>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import GameMarket from '@/components/shop/product-market/GameMarket.nvue';
+	export default {
+		components: {
+			GameMarket,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				market_name: undefined,
+				tags: '',
+				itemName: undefined
+			}
+		},
+		onLoad(options) {
+			if (options.market_name) {
+				this.market_name = options.market_name;
+			}
+			if (options.itemName) {
+				this.itemName = options.itemName;
+			}
+			if (options.tags) {
+				this.tags = JSON.parse(decodeURIComponent(options.tags));
+			}
+		}
+	}
+</script>

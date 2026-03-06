@@ -1,0 +1,281 @@
+<!-- 店铺管理 -->
+<template>
+	<view class="shop-container" v-if="shopInfo">
+		<view class="shop-container-header">
+			<img class="shop-header-img" src="/static/image/game/show-bg.jpg" alt="" />
+			<view class="shop-header-bg"></view>
+			<view class="shop-header-nav" :style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}">
+				<u-icon name="arrow-left" color="#c4c4c4" size="20" @click="backRouter()"></u-icon>
+				<text class="nav-text">{{ shopInfo.name }}</text>
+				<game-switcher @gameChange="appidChange()"></game-switcher>
+			</view>
+			<view class="shop-user-info">
+				<image class="user-avatar" :src="getImageLocal()"></image>
+			</view>
+			<view class="shop-info">
+				<view class="shop-info-item">
+					<text class="value">{{Math.ceil(shopInfo.last7daysAvg) +  i18n.t('app.common.minutes')}}</text>
+					<text class="label">{{i18n.t('app.user.shop.deliver_time')}}/{{i18n.t('app.common.week')}}</text>
+				</view>
+				<view class="shop-info-item-line"></view>
+				<view class="shop-info-item">
+					<text class="value">{{deliveryRate()}}%</text>
+					<text class="label">{{i18n.t('app.user.shop.deliver_rate')}}/{{i18n.t('app.common.week')}}</text>
+				</view>
+			</view>
+			<u-tabs :current="currentTab" :list="tabs" @click="handleTabClick" :activeStyle="{
+			fontSize:'22rpx',
+		    color: '#c4c4c4',
+		}" :inactiveStyle="{
+			fontSize:'22rpx',
+		    color: '#c4c4c4',
+		}" itemStyle="padding:10rpx 20rpx;height: 24px;" lineHeight="2">
+				<view v-if="currentTab==0" class="search-price" slot="right" @click="sortPrice()">
+					<text class="search-price-text">{{i18n.t("app.market.filter.price")}}</text>
+					<image class="filter-price-icon"
+						:src="`/static/image/filter/sort-price-${ascPrice ? 'up' : 'down'}.png`">
+					</image>
+				</view>
+			</u-tabs>
+		</view>
+		<swiper :style="{height:getSystemInfo().windowHeight - 195 - getSystemInfo().statusBarHeight + 'px'}"
+			:current="currentTab" :duration="300" @change="handleSwiperChange" class="swiper-box" v-if="shopInfo">
+			<swiper-item>
+				<shop-sale-list ref="shopSaleRef" :uuid="uuid" :appid="appid"></shop-sale-list>
+			</swiper-item>
+			<swiper-item>
+				<shop-transaction ref="shopTransactionRef" :uuid="uuid" :appid="appid"></shop-transaction>
+			</swiper-item>
+		</swiper>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import GameSwitcher from '@/components/layout/GameSwitcher.nvue';
+	import ShopSaleList from '@/components/shop/user-shop/ShopSaleList.nvue';
+	import ShopTransaction from '@/components/shop/user-shop/ShopTransaction.nvue';
+
+	import {
+		GetUserShopInfoApi
+	} from '@/api/modules/shop/shop.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		components: {
+			GameSwitcher,
+			ShopSaleList,
+			ShopTransaction
+		},
+		data() {
+			return {
+				i18n: i18n,
+				appid: getGameType(),
+				uuid: null,
+				shopInfo: {},
+				currentTab: 0,
+				ascPrice: false,
+				tabs: [{
+						name: i18n.t('app.user.shop.goods_for_sale'),
+						value: 'shop-sale'
+					},
+					{
+						name: i18n.t('app.trade.recent'),
+						value: 'shop-transaction'
+					},
+				]
+			}
+		},
+		onLoad(options) {
+			this.uuid = options.uuid ? options.uuid : getAppUserInfo().shop.uuid;
+			this.getShopInfo();
+		},
+		methods: {
+			sortPrice() {
+				this.ascPrice = !this.ascPrice;
+				if (this.currentTab == 0) {
+					this.$refs.shopSaleRef.asc = this.ascPrice;
+					this.$refs.shopSaleRef.refresh();
+				}
+			},
+			deliveryRate() {
+				let nums = this.shopInfo.last7daysNums;
+				if (nums > 0) {
+					if (this.shopInfo.last7daysNotSend) {
+						return ((nums - this.shopInfo.last7daysNotSend) / nums * 100).toFixed(2);
+					} else {
+						return '100';
+					}
+				} else {
+					return '0';
+				}
+			},
+			async getShopInfo() {
+				try {
+					this.shopInfo = null;
+					const res = await GetUserShopInfoApi({
+						uuid: this.uuid
+					});
+					if (res.code == 0) {
+						this.shopInfo = res.datas;
+					}
+				} catch (error) {
+					//TODO handle the exception
+				}
+			},
+			appidChange(e) {
+				this.appid = getGameType();
+				if (this.currentTab == 0 && this.$refs.shopSaleRef) {
+					this.$refs.shopSaleRef.checkAppid();
+				}
+
+				if (this.currentTab == 1 && this.$refs.shopTransactionRef) {
+					this.$refs.shopTransactionRef.checkAppid();
+				}
+			},
+			handleTabClick(e) {
+				this.currentTab = e.index;
+			},
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+			},
+			backRouter() {
+				uni.navigateBack();
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync()
+				return systemInfo;
+			},
+			getImageLocal() {
+				let imagePath = 'https://www.tronskins.com/fms/image';
+				if (!this.shopInfo || !this.shopInfo.avatar || typeof this.shopInfo.avatar !== 'string') {
+					return '/static/image/user/none.png'
+				}
+				return this.shopInfo.avatar.startsWith("http") ? this.shopInfo.avatar : imagePath + this.shopInfo.avatar;
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	.shop-container {
+		width: 750rpx;
+		flex: 1;
+		position: relative;
+	}
+
+	.shop-container-header {
+		width: 750rpx;
+
+		.search-price {
+			width: 100rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.search-price-text {
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+			}
+
+			.filter-price-icon {
+				width: 30rpx;
+				height: 30rpx;
+			}
+		}
+
+		.shop-header-bg {
+			width: 750rpx;
+			height: 215px;
+			background-color: $app-background-black;
+			position: absolute;
+			left: 0;
+			top: 0;
+			opacity: 0.3;
+		}
+
+		.shop-header-img {
+			width: 750rpx;
+			height: 215px;
+			position: absolute;
+			left: 0;
+			top: 0;
+			opacity: 1;
+			border-bottom: 1rpx solid $app-surface;
+		}
+
+		.shop-user-info {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			justify-content: center;
+
+			.user-avatar {
+				width: 120rpx;
+				height: 120rpx;
+				border-radius: 5rpx;
+				border: 1rpx solid $app-text-thirdly;
+			}
+		}
+
+		.user-name {
+			font-size: $font-size-md;
+			text-align: center;
+			color: $app-divider;
+			padding-top: 10rpx;
+		}
+
+		.shop-header-nav {
+			display: flex;
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+			padding: 20rpx;
+
+			.nav-text {
+				color: $app-divider;
+				font-size: $font-size-md;
+			}
+		}
+	}
+	
+	.shop-info {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		padding: 26rpx 20rpx;
+		align-items: center;
+	
+		.shop-info-item-line {
+			width: 2rpx;
+			height: 30rpx;
+			background-color: $app-divider;
+		}
+	
+		.shop-info-item {
+			width: 355rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+	
+			.value {
+				font-size: $font-size-md;
+				color: $app-divider;
+				margin-bottom: 8rpx;
+				font-weight: bold;
+			}
+	
+			.label {
+				font-size: $font-size-md;
+				color: $app-divider;
+			}
+		}
+	}
+</style>

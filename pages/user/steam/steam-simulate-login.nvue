@@ -1,0 +1,536 @@
+<template>
+	<view class="steam-simulate-login">
+		<u-navbar :title="i18n.t('app.steam.verification')" :autoBack="true" placeholder></u-navbar>
+		<view class="remote-container">
+			<input class="login-input" type="text" v-model="steam_account"
+				:placeholder="i18n.t('app.steam.login.account_tip')" />
+			<input class="login-input" type="password" v-model="steam_password"
+				:placeholder="i18n.t('app.steam.login.passward_tip')" />
+			<view v-if="requiresSteamGuard">
+				<button class="login-btn" @click="verifySteamGuardCode()" type="primary">
+					{{i18n.t('app.steam.login.verify_code')}}
+				</button>
+			</view>
+			<button class="login-btn" @click="steamLogin()" type="primary" :loading="isLoading">
+				{{isLoading ? i18n.t('app.user.login.title') + '...' : i18n.t('app.user.login.title')}}
+			</button>
+			<text class="title">{{i18n.t('app.steam.login.steam_remoteLogin_tip')}}</text>
+		</view>
+		<u-popup :show="isCodeShow" mode="center" @close="isCodeShow = false" :round="20" :mask-close-able="false">
+			<view class="new-pop-box">
+				<!-- 内容区 -->
+				<view class="pop-content">
+					<text class="pop-subtitle">{{i18n.t('app.steam.placeholder.code')}}</text>
+					<text class="pop-description">{{i18n.t('app.steam.verify.title')}}</text>
+
+					<!-- 验证码输入框 -->
+					<view class="verification-code-container">
+						<!-- 验证码输入框 -->
+						<input v-model="steamGuardCode" type="text" inputmode="numeric" maxlength="5"
+							@input="handleCodeInput" @confirm="onCodeFinish" class="simple-code-input"
+							:placeholder="i18n.t('app.steam.code.number')" />
+					</view>
+
+					<!-- 提示信息 -->
+					<view class="info-box">
+						<text class="info-icon">ℹ️</text>
+						<text class="info-text">{{i18n.t('app.steam.code.update')}}</text>
+					</view>
+				</view>
+
+				<!-- 底部按钮 -->
+				<view class="pop-footer">
+					<button class="cancel-btn" @click="isCodeShow=false">
+						{{i18n.t('app.common.cancel')}}
+					</button>
+					<button class="confirm-btn" @click="onCodeFinish" :disabled="steamGuardCode.length !== 5">
+						{{i18n.t('app.common.verify')}}
+					</button>
+				</view>
+			</view>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import {
+		SteamDecryptPasswordApi,
+		SteamAccountKeyApi,
+		SendSteamVerificationApi,
+		SteamAuthorizeLoginApi,
+		SteamAuthorizeCodeApi,
+	} from '@/api/modules/login/steam.js';
+	import {
+		steamTokenFreshApi
+	} from '@/api/modules/steam.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				steam_account: '',
+				steam_password: '',
+				steamGuardCode: '', // 用户输入的验证码
+				isCodeShow: false,
+				isCode: false,
+				client_id: '',
+				steamid: '',
+				isLoading: false, // 加载状态
+				isSave: false,
+			};
+		},
+		mounted() {
+
+		},
+		methods: {
+			/**
+			 * 处理验证码输入，自动转换为大写
+			 */
+			handleCodeInput() {
+				this.steamGuardCode = this.steamGuardCode.toUpperCase();
+			},
+			/**
+			 * 模拟登录steam
+			 */
+			async onCodeFinish() {
+
+				// 简单格式校验
+				if (!/^[A-Z0-9]{5}$/i.test(this.steamGuardCode)) {
+					uni.showToast({
+						title: 'The token must be 5 letters or numbers long.',
+						icon: 'none'
+					});
+					return;
+				}
+				try {
+					const authRes = await SteamAuthorizeCodeApi({
+						client_id: this.client_id,
+						steamid: this.steamid,
+						code_type: '3',
+						code: this.steamGuardCode
+					});
+					console.log(authRes)
+					// 接口返回失败
+					if (authRes.access_token) {
+						console.log("测试")
+						uni.showToast({
+							title: 'Verification successful',
+							icon: 'success'
+						});
+						this.isCodeShow = false;
+						// TODO: 保存 token，跳转页面等
+						// 🔐 准备请求参数：注意字段名要匹配接口要求
+						// response.account_name steamid
+						const steamReq = {
+							steamId: this.steamid,
+							freshToken: authRes.refresh_token
+						};
+
+						// 调用保存 token 的接口
+						const tokenRes = await steamTokenFreshApi(steamReq);
+
+						if (tokenRes.code === 0) {
+							uni.showToast({
+								title: 'Token Saved Successfully.',
+								icon: 'success'
+							});
+						} else {
+							uni.showToast({
+								title: 'Token Save Failed : ' + (tokenRes.datas || 'Unknown error'),
+								icon: 'none'
+							});
+						}
+
+						// ✅ 清空输入框（核心需求）
+						this.isSave = true;
+						this.isCodeShow = false;
+						this.steam_account = '';
+						this.steam_password = '';
+						this.steamGuardCode = '';
+					} else {
+						uni.showLoading({
+							title: 'Please wait...',
+							icon: 'none'
+						})
+						console.log('Please enter again.')
+					}
+				} catch (e) {
+					uni.showToast({
+						title: 'Token verification failed.，Please enter again.',
+						icon: 'none'
+					});
+					this.steamGuardCode = ''; // 清空已输内容
+					this.isCodeShow = true; // 重新打开弹窗
+				}
+			},
+			async steamLogin() {
+				this.isSave = false;
+				this.isCode = false;
+				if (!this.steam_account || !this.steam_password) {
+					uni.showToast({
+						title: i18n.t('app.steam.login.account_tip'),
+						icon: 'none'
+					});
+					return;
+				}
+
+				try {
+					this.isLoading = true; // 开始加载
+
+					// 1. 获取公钥
+					const keyRes = await SteamAccountKeyApi(this.steam_account);
+					const {
+						publickey_mod,
+						publickey_exp,
+						timestamp
+					} = keyRes.data.response;
+
+					// 2. 加密密码
+					const encryptionPassword = await this.encryptionSteamAccount(publickey_mod, publickey_exp);
+
+					// 3. 发起认证会话
+					const params = {
+						persistence: '1',
+						encrypted_password: encryptionPassword,
+						account_name: this.steam_account,
+						encryption_timestamp: timestamp
+					};
+
+					const formData = Object.entries(params)
+						.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+						.join('&');
+
+					const clientRes = await SendSteamVerificationApi(formData);
+					console.log(clientRes)
+					if (!clientRes.data?.response?.client_id) {
+						uni.showToast({
+							title: "Unable to start Steam login session.",
+							icon: 'none'
+						});
+						return
+					}
+					const {
+						client_id,
+						request_id,
+						steamid
+					} = clientRes.data.response;
+					this.client_id = client_id; // 新增
+					this.steamid = steamid; // 新增
+
+					this.isCodeShow = true;
+
+					// 4. 轮询授权状态（关键！）
+					let attempts = 0;
+					const maxAttempts = 30; // 最多轮询 30 次（约 2.5 分钟）
+					let loginSuccess = false;
+
+					while (attempts < maxAttempts) {
+						attempts++;
+						console.log(`[轮询 ${attempts}] 等待 Steam 授权...`);
+
+						const pollRes = await SteamAuthorizeLoginApi({
+							client_id,
+							request_id
+						});
+						const response = pollRes.data?.response || {};
+						if (response.had_remote_interaction == false && this.isCode) {
+
+							uni.showToast({
+								title: 'Token verification failed. Please try again.',
+								icon: 'none'
+							});
+						}
+
+						// 情况 1: 已完成授权（成功！）
+						if (response.access_token) {
+							uni.hideLoading();
+							console.log("手机确认")
+							loginSuccess = true;
+							this.isCodeShow = false;
+							// TODO: 保存 token，跳转页面等
+							// 🔐 准备请求参数：注意字段名要匹配接口要求
+							// response.account_name steamid
+							const steamReq = {
+								steamId: steamid,
+								freshToken: response.refresh_token
+							};
+
+							// 调用保存 token 的接口
+							const tokenRes = await steamTokenFreshApi(steamReq);
+
+							if (tokenRes.code === 0) {
+								uni.showToast({
+									title: 'Success',
+									icon: 'success'
+								});
+							} else {
+								console.log(tokenRes)
+								uni.showToast({
+									title: 'Failed',
+									icon: 'none'
+								});
+							}
+
+							// ✅ 清空输入框（核心需求）
+							this.steam_account = '';
+							this.steam_password = '';
+							this.steamGuardCode = '';
+
+							loginSuccess = true;
+							break;
+						}
+
+
+						// 情况 3: 明确失败
+						if (response.eresult && response.eresult !== 1) {
+							throw new Error('Steam login was rejected or an error occurred.');
+						}
+
+						// 情况 4: 继续等待（had_remote_interaction: false）
+						await new Promise(resolve => setTimeout(resolve, 5000)); // 等 5 秒
+					}
+
+					if (!loginSuccess) {
+						throw new Error('Login timed out, please try again.');
+					}
+
+				} catch (error) {
+					uni.showToast({
+						title: "Request timed out.",
+						icon: 'none'
+					});
+				} finally {
+					uni.hideLoading();
+					this.isLoading = false; // 结束加载
+				}
+			},
+			/**
+			 * 加密 Steam 账号密码
+			 */
+			async encryptionSteamAccount(publickey_mod, publickey_exp) {
+				const res = await SteamDecryptPasswordApi({
+					account: this.steam_account,
+					password: this.steam_password,
+					publickey_mod: publickey_mod,
+					publickey_exp: publickey_exp,
+				});
+				return res.datas.password;
+			},
+		}
+	};
+</script>
+
+<style lang="scss" scoped>
+	.new-pop-box {
+		width: 600rpx;
+		background: #fff;
+		border-radius: 20rpx;
+		overflow: hidden;
+		box-shadow: 0 16rpx 48rpx rgba(0, 0, 0, 0.15);
+	}
+
+	/* 头部样式 */
+	.pop-header {
+		padding: 40rpx 40rpx 30rpx;
+		text-align: center;
+		border-bottom: 1rpx solid #f0f0f0;
+	}
+
+	.steam-icon {
+		width: 120rpx;
+		height: 40rpx;
+		background: linear-gradient(135deg, #1b2838 0%, #2a475e 100%);
+		border-radius: 8rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 auto 20rpx;
+	}
+
+	.icon-text {
+		color: #fff;
+		font-size: 24rpx;
+		font-weight: 600;
+		font-family: 'Arial', sans-serif;
+	}
+
+	.pop-title {
+		font-size: 32rpx;
+		font-weight: 700;
+		color: #1b2838;
+		margin-bottom: 10rpx;
+	}
+
+	/* 内容区样式 */
+	.pop-content {
+		padding: 30rpx 40rpx;
+	}
+
+	.pop-subtitle {
+		font-size: 26rpx;
+		font-weight: 600;
+		color: #333;
+		text-align: center;
+		margin-bottom: 15rpx;
+	}
+
+	.pop-description {
+		font-size: 22rpx;
+		color: #666;
+		line-height: 34rpx;
+		text-align: center;
+		margin-bottom: 40rpx;
+	}
+
+	/* 验证码输入区 */
+	.verification-code-container {
+		margin-bottom: 35rpx;
+	}
+
+	.simple-code-input {
+		width: 520rpx;
+		height: 100rpx;
+		font-size: 36rpx;
+		font-weight: 600;
+		color: #333;
+		background-color: #f8f8f8;
+		border: 2rpx solid #e0e0e0;
+		border-radius: 12rpx;
+		padding: 0 30rpx;
+		text-align: center;
+		letter-spacing: 15rpx;
+		transition: all 0.3s ease;
+		box-sizing: border-box;
+	}
+
+	.simple-code-input:focus {
+		border-color: #3b89a5;
+		background-color: #fff;
+		box-shadow: 0 0 0 8rpx rgba(59, 137, 165, 0.1);
+	}
+
+	.simple-code-input::placeholder {
+		color: #ccc;
+		letter-spacing: 5rpx;
+		font-weight: normal;
+		font-size: 24rpx;
+	}
+
+	/* 提示信息 */
+	.info-box {
+		display: flex;
+		align-items: flex-start;
+		flex-direction: row;
+		padding: 20rpx;
+		background-color: #f8f8f8;
+		border-radius: 12rpx;
+		border-left: 4rpx solid #3b89a5;
+	}
+
+	.info-icon {
+		font-size: 24rpx;
+		margin-right: 15rpx;
+		flex-shrink: 0;
+		margin-top: 2rpx;
+	}
+
+	.info-text {
+		font-size: 20rpx;
+		color: #666;
+		line-height: 30rpx;
+		flex: 1;
+	}
+
+	/* 底部按钮 */
+	.pop-footer {
+		padding: 0 40rpx 40rpx;
+		display: flex;
+		flex-direction: row;
+		gap: 20rpx;
+	}
+
+	.cancel-btn {
+		flex: 1;
+		height: 80rpx;
+		border: 2rpx solid #e0e0e0;
+		border-radius: 12rpx;
+		background-color: #fff;
+		color: #666;
+		font-size: 24rpx;
+		font-weight: 500;
+		transition: all 0.3s ease;
+	}
+
+	.cancel-btn:hover {
+		border-color: #ccc;
+		background-color: #f8f8f8;
+	}
+
+	.confirm-btn {
+		flex: 1;
+		height: 80rpx;
+		border: none;
+		border-radius: 12rpx;
+		background: #2ecc71;
+		color: #fff;
+		font-size: 24rpx;
+		font-weight: 600;
+		transition: all 0.3s ease;
+		margin-left: 25rpx;
+	}
+
+	.confirm-btn:hover:not(:disabled) {
+		opacity: 0.9;
+		transform: translateY(-2rpx);
+		box-shadow: 0 8rpx 16rpx rgba(59, 137, 165, 0.3);
+	}
+
+	.confirm-btn:disabled {
+		background: #ccc;
+		cursor: not-allowed;
+		transform: none;
+		box-shadow: none;
+	}
+
+
+	.steam-simulate-login {
+		width: 750rpx;
+		background: #fff;
+
+		.remote-container {
+			margin-top: 50rpx;
+			background: #fff;
+
+			.title {
+				width: 750rpx;
+				font-size: 22rpx;
+				color: #6a6a6a;
+				text-align: left;
+				padding: 20rpx;
+			}
+
+			.login-input {
+				width: 710rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				color: #4a4a4a;
+				background-color: #f0f0f0;
+				border-radius: 5rpx;
+				text-align: left;
+				font-size: 30rpx;
+				margin: 25rpx 20rpx;
+				padding-left: 20rpx;
+			}
+
+			.login-btn {
+				width: 710rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				text-align: center;
+				color: #fff;
+				margin: 25rpx 20rpx;
+			}
+		}
+	}
+</style>

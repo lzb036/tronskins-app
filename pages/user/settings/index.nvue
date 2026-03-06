@@ -1,0 +1,232 @@
+<!-- 用户设置 -->
+<template>
+	<view class="setting-container">
+		<u-navbar :title="i18n.t('app.user.setting.title')" :autoBack="false" @left-click="back()" fixed
+			safeAreaInsetTop></u-navbar>
+		<view :style="{height: systemInfo.statusBarHeight + 44 + 'px'}"></view>
+		<view class="setting-cell" v-if="isLogin">
+			<text class="user-name">{{i18n.t('app.user.setting.avatar')}}</text>
+			<image class="user-avatar" :src="userInfo ? getImageLocal(userInfo.avatar) : '/static/image/user/none.png'">
+			</image>
+		</view>
+		<u-cell v-for="(item,index) in list" :key="index" :isLink="item.value ? false : true" customStyle="{color:#888}"
+			:border="false" :rightIconStyle="{fontSize:'12px',color:'#d0d0d0'}" @click="route(item)" v-if="item.auth">
+			<text slot="title" class="user-name">{{ item.label }}</text>
+			<text slot="value" class="user-name">{{ userInfo[item.value] }}</text>
+		</u-cell>
+		<u-cell :border="false" @click="clearCache()">
+			<text slot="title" class="user-name">{{ i18n.t('app.user.setting.cache_clear') }}</text>
+		</u-cell>
+		<u-cell :border="false">
+			<text slot="title" class="user-name">{{ i18n.t('app.user.setting.version') }}</text>
+			<text slot="value" class="user-name">{{ appVersion }}</text>
+		</u-cell>
+		<text class="logout-btn" @click="logout()" v-if="isLogin">{{i18n.t('app.user.login.logout')}}</text>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		LogoutUserApi
+	} from '@/api/modules/login/auth.js';
+	import {
+		getAppUserInfo,
+		setAppUserInfo,
+		clearAuthStorage
+	} from '@/utils/storage/modules/user.js';
+	import {
+		get2FAList,
+		set2FAList
+	} from '@/utils/storage/modules/2fa-token.js';
+	import {
+		setWEBIDCookie
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		data() {
+			return {
+				isLogin: isLogin(),
+				list: [{
+					label: i18n.t('app.user.setting.nickname'),
+					value: 'nickname',
+					auth: isLogin() ? true : false,
+					path: '/pages/user/settings/edit-nickname'
+				}, {
+					label: i18n.t('app.user.setting.password_change'),
+					value: '',
+					auth: isLogin() ? true : false,
+					path: '/pages/user/settings/edit-password'
+				}, {
+					label: i18n.t('app.user.setting.steam_management'),
+					value: '',
+					auth: isLogin() ? true : false,
+					path: '/pages/user/steam/steam-setting'
+				}, {
+					label: i18n.t('app.user.setting.multilingual'),
+					value: '',
+					auth: true,
+					path: '/pages/system-settings/language'
+				}, {
+					label: i18n.t('app.user.setting.server'),
+					value: '',
+					auth: true,
+					path: '/pages/system-settings/server-list'
+				}, {
+					label: '认证调试',
+					value: '',
+					auth: true,
+					path: '/pages/system-settings/auth-debug'
+				}, ],
+				i18n: i18n,
+				systemInfo: {},
+				userInfo: {},
+				appVersion: '',
+			}
+		},
+		mounted() {
+			const systemInfo = uni.getSystemInfoSync()
+			this.systemInfo = systemInfo;
+			this.userInfo = getAppUserInfo();
+			plus.runtime.getProperty(plus.runtime.appid, (inf) => {
+				this.appVersion = `${inf.version}(${inf.versionCode})`
+			});
+			plus.key.addEventListener('backbutton', this.back);
+		},
+		beforeDestroy() {
+			plus.key.removeEventListener('backbutton');
+		},
+		methods: {
+			route(item) {
+				if (item.path) {
+					uni.$u.route({
+						url: item.path,
+					})
+				}
+			},
+			async logout() {
+				try {
+					uni.showLoading({
+						mask: true
+					});
+					let userId = getAppUserInfo() && getAppUserInfo().id ? getAppUserInfo().id : null;
+					const res = await LogoutUserApi();
+					if (res.code == 0 && res.datas) {
+						await this.check2FA(userId);
+						uni.$emit('app-user-logout');
+						uni.$u.toast(res.datas);
+					}
+				} catch (e) {
+					console.log(e)
+				} finally {
+					setTimeout(() => {
+						setAppUserInfo('');
+						clearAuthStorage();
+						uni.switchTab({
+							url: '/pages/user/user-center',
+						})
+					}, 1000);
+					uni.hideLoading();
+				}
+			},
+			async check2FA(userId) {
+				let guardList = await get2FAList();
+				// 当前用户没有选择绑定或者同步令牌码,不保存
+				if (!userId) return;
+				let guard = guardList.find(item => item.userId == userId && item.appUse == getAppUserInfo().appUse);
+				if (!guard) return;
+				if (!guard.secret || guard.secret.length == 0) {
+					guardList = guardList.filter(item => !(item.userId == userId && item.appUse == getAppUserInfo()
+						.appUse));
+					set2FAList(guardList);
+				}
+			},
+			clearCache() {
+				uni.showModal({
+					title: this.i18n.t('app.user.setting.cache_clear'),
+					content: this.i18n.t('app.user.setting.cache_clear_confirm'),
+					success: (res) => {
+						if (res.confirm) {
+							uni.showLoading({
+								title: this.i18n.t('app.user.setting.cache_clearing'),
+								mask: true
+							});
+							const cacheKeys = [
+								'schema_tags_570',
+								'schema_tags_730', 
+								'es_2fa_list', 
+								
+							];
+							cacheKeys.forEach(key => {
+								uni.removeStorageSync(key);
+							});
+							setTimeout(() => {
+								uni.hideLoading();
+								uni.$u.toast(this.i18n.t('app.user.setting.cache_clear_success'));
+							}, 1000);
+						}
+					}
+				});
+			},
+			getImageLocal(avatar) {
+				if (avatar) {
+					let imagePath = 'https://www.tronskins.com/fms/image';
+					return avatar.startsWith("http") ? avatar : imagePath + avatar;
+				}
+			},
+			async back() {
+				await uni.reLaunch({
+					url: '/pages/user/user-center'
+				});
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.setting-container {
+		display: flex;
+		flex: 1;
+		background-color: $app-background;
+	}
+
+	.setting-cell {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10rpx 30rpx;
+
+		.user-avatar {
+			width: 100rpx;
+			height: 100rpx;
+			border-radius: 100rpx;
+		}
+	}
+
+	.user-name {
+		//width: 500rpx;
+		font-size: $font-size-md;
+		color: $app-text-thirdly;
+		lines: 1;
+		text-overflow: ellipsis;
+	}
+
+	.logout-btn {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		width: 750rpx;
+		padding: 30rpx 0;
+		text-align: center;
+		color: $app-background;
+		font-size: $font-size-md;
+		background-color: $app-link;
+	}
+</style>

@@ -1,0 +1,353 @@
+<!-- 我的求购 -->
+<template>
+	<view>
+		<sort-price-filter :itemName="itemName" :tags="tags" :appid="appid" @ascPrice="refresh($event,'asc')"
+			@keywords="refresh($event,'keywords')" @filterType="refresh($event,'type')"></sort-price-filter>
+		<u-skeleton :loading="isLoading" rows="10">
+			<list-refresh :dataList="list" :total="total" height="84" @refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item }">
+					<view class="item-container">
+						<view class="item-header-title">
+							<text class="create-time">{{getUpTime(item)}}</text>
+							<view class="item-num-wrap">
+								<text class="item-received">{{item.received}}</text>
+								<text class="span-symbol">/</text>
+								<text class="item-nums">{{item.nums}}</text>
+							</view>
+						</view>
+						<view class="sale-item">
+							<BaseItem :imageUrl="schemas[item.schema_id].image_url" :appid="item.appId"
+								:schema_id="item.schema_id" :exterior="getExterior(schemas[item.schema_id])"
+								:bg="getRarity(schemas[item.schema_id])" :width="156">
+							</BaseItem>
+							<view class="sale-price">
+								<text class="item-market-name">{{schemas[item.schema_id].market_name}}</text>
+								<view class="item-attribute"
+									v-if="(item.paint_wear_min>=0&&item.paint_wear_max>0)||item.phase">
+									<text class="attribute-text"
+										v-if="item.paint_wear_min>=0&&item.paint_wear_max>0">{{i18n.t('app.market.csgo.wear')}}:{{ item.paint_wear_min +' - '+ item.paint_wear_max }}</text>
+									<text class="attribute-text"
+										v-if="item.phase">{{i18n.t('app.market.csgo.phase')}}:{{ item.phase }}</text>
+								</view>
+								<text class="price-label">{{i18n.t('app.market.price_unit')}}:</text>
+								<text class="price-value">{{currencySymbol + item.price}}</text>
+							</view>
+							<view class="sale-right">
+								<u-button class="buy-btn" size="mini" color="#4674c9"
+									:text="i18n.t('app.inventory.price_change')"
+									@click="changePriceSubmit(item)"></u-button>
+								<u-button class="buy-btn" plain size="mini" color="#4674c9"
+									:text="i18n.t('app.trade.purchase.terminate')"
+									@click="cancelSubmit(item)"></u-button>
+							</view>
+						</view>
+					</view>
+				</template>
+			</list-refresh>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import SortPriceFilter from '@/components/layout/SortPriceFilter.nvue';
+	import {
+		MyBuyOrderListApi,
+		OrderItemCancelBuyApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		components: {
+			BaseItem,
+			ListRefresh,
+			SortPriceFilter,
+		},
+		props: ['purchaseOnline'],
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				appid: getGameType(),
+				list: [],
+				schemas: {},
+				sortField: 'upTime', // 默认按上架时间排序
+				sortAsc: false, // false = 倒序，true = 正序
+				ascPrice: false,
+				marketName: '',
+				tags: {},
+				itemName: '',
+				pager: {
+					page: 1,
+					pageSize: 20,
+				},
+				total: null,
+				isLoading: false,
+			}
+		},
+		created() {
+			this.getQueryList();
+		},
+		mounted() {
+			uni.$on('order-sell-reload', () => {
+				this.refresh();
+			});
+			uni.$on('change-price', () => {
+				this.refresh();
+			});
+		},
+		methods: {
+			getExterior(schema) {
+				try {
+					return schema.tags.exterior
+				} catch (e) {
+
+				}
+			},
+			getRarity(schema) {
+				try {
+					return schema.tags.rarity.color
+				} catch (e) {
+
+				}
+			},
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			/**
+			 * 改价饰品
+			 */
+			changePriceSubmit(item) {
+				if (!this.purchaseOnline) {
+					uni.$u.toast(this.i18n.t('app.trade.purchase.offline_tips'));
+					return;
+				}
+				try {
+					let schema = this.schemas[item.schema_id];
+					uni.$u.route('/pages/shop/buying/update-price', {
+						item: encodeURIComponent(JSON.stringify(item)),
+						schemas: encodeURIComponent(JSON.stringify(schema)),
+						mode: 'mybuy'
+					});
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			/**
+			 * 终止求购
+			 */
+			async cancelSubmit(item) {
+				if (!this.purchaseOnline) {
+					uni.$u.toast(this.i18n.t('app.trade.purchase.offline_tips'));
+					return;
+				}
+				uni.showModal({
+					content: this.i18n.t('app.trade.purchase.message.confirm_terminate'),
+					confirmText: this.i18n.t('app.common.confirm'),
+					cancelText: this.i18n.t('app.common.cancel'),
+					success: async (res) => {
+						if (res.confirm) {
+							let params = {
+								id: item.id
+							}
+							const res = await OrderItemCancelBuyApi(params);
+							if (res.code == 0) {
+								uni.$u.toast(this.i18n.t('app.system.message.success'));
+								this.refresh();
+							} else {
+								uni.$u.toast(res.datas);
+							}
+						}
+					}
+				});
+			},
+			async getQueryList() {
+				let params = {
+					appId: this.appid,
+					status: 1,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					// 修改排序参数：默认按时间倒序
+					asc: this.sortAsc,
+					field: this.sortField,
+					keywords: this.marketName,
+					tags: this.tags,
+					itemName: this.itemName
+				}
+				try {
+					this.isLoading = true;
+					const res = await MyBuyOrderListApi(params);
+					if (res.code == 0) {
+						this.schemas = Object.assign({}, this.schemas, res.datas.schemas);
+						this.list = this.list.concat(res.datas.assets);
+						this.total = res.datas.pager.total;
+					}
+				} catch (e) {
+					console.error('获取求购列表失败:', e);
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			async refresh(e, type) {
+				try {
+					this.isLoading = true;
+					if (type == 'asc') {
+
+						this.sortField = 'price';
+						this.sortAsc = e;
+					}
+					if (type == 'keywords') {
+						this.marketName = e;
+					}
+					if (type == 'type') {
+						this.tags = e.tags;
+						this.itemName = e.itemName;
+					}
+					this.list = [];
+					this.pager.page = 1;
+					await this.getQueryList();
+				} catch (e) {
+					console.log(e)
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getQueryList();
+			},
+			getUpTime(item) {
+				return uni.$u.timeFormat(item.upTime,
+					'yyyy-mm-dd hh:MM:ss')
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.item-container {
+		width: 750rpx;
+		border-bottom: 1rpx solid $app-surface;
+	}
+
+	.item-header-title {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10rpx 20rpx;
+
+		.create-time {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+		}
+
+		.item-num-wrap {
+			display: flex;
+			flex-direction: row;
+			margin-bottom: 6rpx;
+
+			.item-received {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+			}
+
+			.item-nums {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+			}
+
+			.span-symbol {
+				font-size: $font-size-sm;
+				margin: 0 6rpx;
+				color: $app-text-thirdly;
+			}
+		}
+	}
+
+	.sale-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 10rpx 20rpx;
+
+		.sale-right {
+			width: 170rpx;
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-end;
+			align-items: flex-end;
+
+			.buy-btn {
+				width: 120rpx;
+				height: 40rpx;
+				margin: 5rpx;
+				border-radius: 0;
+			}
+		}
+
+		.sale-price {
+			width: 384rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			margin-bottom: 5rpx;
+			margin-left: 10rpx;
+			flex-wrap: wrap;
+
+			.item-market-name {
+				width: 384rpx;
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				lines: 1;
+				text-overflow: ellipsis;
+				margin-bottom: 10rpx;
+			}
+
+			.item-attribute {
+				width: 384rpx;
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				justify-content: flex-start;
+			}
+
+			.attribute-text {
+				font-size: $font-size-md;
+				color: $app-text-thirdly;
+				lines: 1;
+				text-overflow: ellipsis;
+				margin-bottom: 10rpx;
+				text-align: left;
+				margin-right: 20rpx;
+			}
+
+			.price-label {
+				font-size: $font-size-md;
+				color: $app-text-thirdly;
+				margin-right: 6rpx;
+			}
+
+			.price-value {
+				font-size: $font-size-md;
+				color: $app-text-price;
+				font-weight: 300;
+				margin-right: 5rpx;
+				font-weight: bold;
+			}
+		}
+	}
+</style>

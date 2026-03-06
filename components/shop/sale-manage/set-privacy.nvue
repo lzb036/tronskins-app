@@ -1,0 +1,125 @@
+<template>
+	<view class="container">
+		<view class="header">
+			<text class="title">{{ i18n.t('app.system.tips.title') }}</text>
+			<u-icon class="close-btn" @click="close()" name="close" color="#888" size="20"></u-icon>
+		</view>
+		<text
+			class="text">{{ i18n.t('messageSetInventoryPrivacy_1') + userInfo.config.nickname + i18n.t('messageSetInventoryPrivacy_2') }}</text>
+		<view class="footer">
+			<text class="cancel btn" @click="refreshState()">{{ i18n.t("app.steam.settings.refresh_state") }}</text>
+			<text class="confirm btn" @click="goSteamSettings()">{{ i18n.t("app.steam.settings.go_set") }}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js'
+	import {
+		getSteamSetPrivacyApi
+	} from '@/api/modules/steam.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				userInfo: getAppUserInfo()
+			}
+		},
+		methods: {
+			goSteamSettings() {
+				uni.$u.route('/pages/user/steam/inventory-setting');
+				this.close();
+			},
+			async refreshState() {
+				uni.showLoading({
+					title: this.i18n.t('app.system.tips.please_wait'),
+					mask: true
+				});
+				const res = await getSteamSetPrivacyApi();
+				uni.hideLoading();
+				if(res.code==0){
+					uni.$u.toast(this.i18n.t('app.system.message.success'));
+				}else{
+					uni.$u.toast(res.datas);
+				}
+			},
+			close(){
+				this.$emit('close');
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	
+	.container {
+		width: 680rpx;
+		background: $app-background;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 30rpx 20rpx;
+	}
+
+	.header {
+		width: 640rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		position: relative;
+
+		.title {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			font-weight: bold;
+			margin-bottom: 20rpx;
+		}
+
+		.close-btn {
+			position: absolute;
+			right: 0rpx;
+			top: 0rpx;
+		}
+	}
+
+	.text {
+		width: 620rpx;
+		text-align: center;
+		font-size: $font-size-md;
+		color: $app-text-primary;
+		margin: 20rpx 0;
+	}
+
+	.footer {
+		width: 520rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: 20rpx;
+
+		.cancel {
+			background: #45536d;
+		}
+
+		.confirm {
+			background: #4774c9;
+		}
+
+		.btn {
+			width: 180rpx;
+			color: $app-background;
+			text-align: center;
+			padding: 14rpx 0;
+			font-size: $font-size-md;
+			border-radius: 5rpx;
+		}
+	}
+</style>

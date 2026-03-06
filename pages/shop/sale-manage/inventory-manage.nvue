@@ -1,0 +1,509 @@
+<template>
+	<view class="container">
+		<MarketNavbar v-model="currentTab" :list="tabs" @change="handleTabClick" @appid="appidChange($event)">
+		</MarketNavbar>
+		<swiper :current="currentTab" :duration="300" @change="handleSwiperChange" class="swiper-box">
+			<swiper-item>
+				<view class="header" v-if="isLogin">
+					<sort-price-filter mode="inventory" :itemName="itemName" :tags="tags" :appid="appid"
+						@ascPrice="refresh($event,'asc')" @keywords="refresh($event,'keywords')"
+						@filterType="refresh($event,'type')"></sort-price-filter>
+					<view class="valuation-box" v-if="total&&totalPrice">
+						<text class="value">{{ i18n.t('app.inventory.count') +': ' + total }}</text>
+						<text
+							class="value">{{ i18n.t('app.inventory.total_value') +': '+ currencySymbol + totalPrice }}</text>
+					</view>
+					<view v-if="appid !== '440'" class="button-group">
+						<text class="nuve-btn" :class="{'active': sellableFilterActive}" @click="filterSellable()">
+							{{ i18n.t('app.market.product.sellable') }}
+						</text>
+						<text class="nuve-btn" :class="{'active': coolingFilterActive}" @click="filterCooling()">
+							{{ i18n.t('app.market.product.cooling') }}
+						</text>
+					</view>
+				</view>
+				<u-skeleton :loading="isLoading" rows="10">
+					<view v-if="!isLogin" @click="goLogin()">
+						<u-empty style="padding-bottom: 200rpx;" :text="i18n.t('app.user.login.nologin')" icon="/static/image/no-login.png"></u-empty>
+					</view>
+					<waterfall-refresh v-else :dataList="list" :total="storageTotal" height="44"
+						style="padding-bottom: 120px;" @refresh="refresh($event, 'reload')" @loadMore="loadMore()">
+						<template #item="{ item }">
+							<item-bag :key="item.id" :item="item" :schemas="schemas" width="355"></item-bag>
+						</template>
+					</waterfall-refresh>
+				</u-skeleton>
+			</swiper-item>
+		</swiper>
+		<view class="select-content" v-if="isShow">
+			<view class="select-left" @click="itemAll()">
+				<image class="select-all" :src="`/static/image/game/${ isAll ? 'all-active' : 'all' }.png`" mode="">
+				</image>
+				<text class="select-value">{{`(${selectList.length}/${list.length})` }}</text>
+			</view>
+			<view class="select-right">
+				<text class="up-shop-btn" @click="upShopSubmit()">{{i18n.t('app.inventory.upshop.text')}}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import ItemBag from '@/components/game-item/ItemBag.nvue';
+	import MarketNavbar from '@/components/layout/MarketNavbar.nvue';
+	import WaterfallRefresh from '@/components/layout/waterfall-refresh.nvue';
+	import SortPriceFilter from '@/components/layout/SortPriceFilter.nvue';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+	import {
+		inventoryListApi,
+		inventoryRefreshApi
+	} from '@/api/modules/shop/shop-inventory.js';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		steamOnlineStateApi
+	} from '@/api/modules/steam.js';
+	import {
+		getItemListData
+	} from '@/utils/dq/goods.js';
+
+	export default {
+		components: {
+			ItemBag,
+			MarketNavbar,
+			WaterfallRefresh,
+			SortPriceFilter
+		},
+		data() {
+			return {
+				i18n: i18n,
+				appid: getGameType(),
+				currencySymbol: config.currencySymbol,
+				currentTab: 0,
+				tabs: [{
+					name: i18n.t('app.inventory.title'),
+					value: 'backpack'
+				}],
+				isAll: false,
+				list: [],
+				schemas: {},
+				asc: false,
+				field: 'price',
+				marketName: null,
+				tags: null,
+				itemName: null,
+				pager: {
+					page: 1,
+					pageSize: 20
+				},
+				total: null,
+				totalPrice: null,
+				storageTotal: null,
+				isLogin: isLogin(),
+				refreshTimer: null,
+				refreshThreshold: 5 * 60 * 1000,
+				canSellOnly: null,
+				status: null,
+				sellableFilterActive: false,
+				coolingFilterActive: false,
+				steamTokenExpired: false,
+				isLoading: false,
+			}
+		},
+		computed: {
+			isShow() {
+				return this.list.some(item => item.isSelect)
+			},
+			selectList() {
+				return this.list.filter(item => item.isSelect);
+			}
+		},
+		onShow() {
+			this.isLogin = isLogin();
+			// 通知自定义导航栏切换游戏
+			uni.$emit('app-navbar-appid');
+			this.checkAppid();
+			if (this.isLogin != isLogin()) {
+				this.isLogin = isLogin();
+				this.refresh();
+			} else {
+				this.resetRefreshTimer();
+			}
+			this.checkSteamToken();
+
+		},
+		onHide() {
+			if (!isLogin()) {
+				this.refresh();
+			}
+		},
+		created() {
+			this.getUserInventory();
+		},
+		mounted() {
+			uni.$on('order-inventroy-reload', () => {
+				this.refresh();
+			});
+			uni.$on('app-user-logout', () => {
+				this.isLogin = isLogin();
+				this.refresh();
+			});
+		},
+		methods: {
+			goLogin(){
+				uni.$u.route('/pages/auth/login');
+			},
+			async checkSteamToken() {
+				if (this.isLogin) {
+					const steamStatus = await steamOnlineStateApi();
+					// steam是否存在长期token
+					if (!steamStatus.datas && !this.steamTokenExpired) {
+						this.steamTokenExpired = true;
+						uni.showModal({
+							content: i18n.t('app.steam.session.expired'),
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							success: (res) => {
+								if (res.confirm) {
+									this.steamTokenExpired = false;
+									uni.$u.route('/pages/user/steam/steam-simulate-login');
+								} else if (res.cancel) {
+									this.steamTokenExpired = false;
+								}
+							}
+						});
+						return;
+					}
+				}
+			},
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			filterSellable() {
+				this.sellableFilterActive = !this.sellableFilterActive;
+				this.coolingFilterActive = false;
+				this.canSellOnly = this.sellableFilterActive ? true : undefined;
+				this.status = null;
+				this.refresh();
+			},
+			filterCooling() {
+				this.coolingFilterActive = !this.coolingFilterActive;
+				this.sellableFilterActive = false;
+				this.status = this.coolingFilterActive ? 4 : undefined;
+				this.canSellOnly = null;
+				this.refresh();
+			},
+			/**
+			 * 全选
+			 */
+			itemAll() {
+				this.isAll = !this.isAll;
+				this.list.forEach(item => {
+					if (item.cd || !item.tradeAble || item.status == 1 || item.status == 2) {
+						return;
+					}
+					item.isSelect = this.isAll ? true : false;
+				})
+			},
+			/**
+			 * 上架饰品
+			 */
+			upShopSubmit() {
+				this.selectList.forEach(item => {
+					item.amount = '';
+				})
+				uni.$u.route({
+					url: '/pages/shop/order-manage/up-shop',
+					params: {
+						list: encodeURIComponent(JSON.stringify(this.selectList)),
+						schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+					}
+				})
+			},
+			async getUserInventory() {
+				let params = {
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					field: this.field ? this.field : "price",
+					asc: this.asc,
+					keywords: this.marketName,
+					tags: this.tags,
+					itemName: this.itemName,
+					canSellOnly: this.canSellOnly,
+					status: this.status,
+				}
+				const res = await inventoryListApi(params);
+				if (res.code == 0) {
+					uni.setStorageSync('last_refresh_time', new Date().getTime());
+					if(res.datas.pager){
+						this.total = res.datas.pager.total ? res.datas.pager.total : res.datas.total;
+					}
+					this.storageTotal = this.total;
+					this.totalPrice = res.datas.total_price;
+					if (Number(res.datas.total) == 0) {
+						const refreshRes = await inventoryRefreshApi({
+							appId: this.appid,
+						});
+						if (refreshRes && refreshRes.code == 0) {
+							this.resetRefreshTimer();
+						}
+						return;
+					}
+					if (res.datas.assets && res.datas.assets.length > 0) {
+						res.datas.assets.forEach(item => {
+							item.isSelect = false;
+						})
+						this.schemas = Object.assign({}, this.schemas, res.datas.schemas);
+						this.list = this.list.concat(res.datas.assets);
+						this.list = getItemListData(this.list, this.schemas);
+					}
+				}
+			},
+			resetRefreshTimer() {
+				if (this.isLogin) {
+					let currentTime = new Date().getTime();
+					let lastRefreshTime = uni.getStorageSync('last_refresh_time');
+					let timeDiff = currentTime - lastRefreshTime;
+					if (timeDiff >= this.refreshThreshold) {
+						console.log("自动刷新")
+						this.refresh();
+					}
+				}
+			},
+			async refresh(e, type) {
+				try {
+					if (!this.isLogin) return;
+					this.isLoading = true;
+					this.total = 0;
+					this.totalPrice = 0;
+					this.isAll = false;
+					if (type == 'asc') {
+						this.asc = e;
+					}
+					if (type == 'keywords') {
+						this.marketName = e;
+					}
+					if (type == 'type') {
+						this.tags = e.tags;
+						this.asc = e.sortAsc;
+						this.field = e.sortField;
+						this.itemName = e.itemName;
+					}
+					if (type == 'reload') {
+						this.canSellOnly = undefined;
+						this.status = undefined;
+						this.sellableFilterActive = false;
+						this.coolingFilterActive = false;
+					}
+					this.list = [];
+					this.pager.page = 1;
+					await this.getUserInventory();
+				} catch (e) {
+					console.log(e)
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				this.pager.page++;
+				this.isAll = false;
+				this.getUserInventory();
+			},
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			appidChange(appid) {
+				this.checkAppid();
+			},
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			handleTabClick(e) {
+				this.currentTab = e.index;
+			},
+			/**
+			 * 滑动切换tabs
+			 * @param {Object} e
+			 */
+			handleSwiperChange(e) {
+				this.currentTab = e.detail.current;
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+	.valuation-box {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 10rpx 0 10rpx;
+
+		.value {
+			font-size: $font-size-md;
+			color: $app-text-thirdly;
+			margin: 0 10rpx;
+		}
+	}
+
+	.container {
+		flex: 1;
+		background-color: $app-background;
+	}
+
+	.swiper-box {
+		flex: 1;
+		width: 750rpx;
+	}
+
+	.button-group {
+		display: flex;
+		padding: 10rpx 10rpx 20rpx;
+		flex-direction: row;
+		justify-content: flex-start;
+	}
+
+	.active {
+		color: $app-link !important;
+		border: 2rpx solid $app-link !important;
+	}
+
+	.nuve-btn {
+		width: 220rpx;
+		height: 70rpx;
+		border-radius: 8rpx;
+		background: $app-background;
+		color: $app-text-thirdly;
+		padding-top: 20rpx;
+		text-align: center;
+		font-size: $font-size-md;
+		margin-right: 10rpx;
+		border: 2rpx solid $app-surface-elevated;
+	}
+
+	.search-container {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+
+		.filter-icon {
+			width: 46rpx;
+			height: 40rpx;
+		}
+
+		.search-bar {
+			width: 660rpx;
+			height: 62rpx;
+			background: $app-surface;
+			display: flex;
+			flex-direction: row;
+			border-radius: 3rpx;
+			align-items: center;
+			justify-content: center;
+			padding: 10rpx;
+			margin: 20rpx 14rpx 20rpx 0;
+			position: relative;
+
+			.scan-box {
+				width: 70rpx;
+				height: 62rpx;
+				position: absolute;
+				right: 0rpx;
+				top: 0;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 10rpx 15rpx;
+			}
+
+			.scan-icon {
+				position: absolute;
+				left: 20rpx;
+			}
+
+			.label {
+				color: $app-text-thirdly;
+				font-size: $font-size-sm;
+				padding-top: 2rpx;
+				position: absolute;
+				left: 70rpx;
+			}
+		}
+	}
+
+	.select-content {
+		width: 750rpx;
+		height: 80rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding-left: 20rpx;
+		background-color: $app-background;
+		position: fixed;
+		left: 0;
+		bottom: 0rpx;
+		border-top: 1rpx solid $app-surface;
+
+		.select-left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+			padding: 14rpx 18rpx;
+
+			.select-all {
+				width: 30rpx;
+				height: 30rpx;
+				margin-right: 10rpx;
+			}
+
+			.select-value {
+				color: $app-text-primary;
+				font-size: $font-size-sm;
+			}
+		}
+
+		.select-right {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+
+			.up-shop-btn {
+				width: 200rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				font-size: $font-size-md;
+				text-align: center;
+				color: $app-background;
+				background-color: $app-success-dark;
+			}
+
+			.change-price-btn {
+				width: 200rpx;
+				height: 80rpx;
+				line-height: 80rpx;
+				font-size: $font-size-md;
+				text-align: center;
+				color: $app-background;
+				background-color: $app-text-disabled;
+			}
+		}
+	}
+</style>

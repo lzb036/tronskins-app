@@ -1,0 +1,83 @@
+<!-- 帮助中心 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.server.help')" :autoBack="true" placeholder></u-navbar>
+		<view class="help-container">
+			<view class="content" @click="goFeedback()">
+				<view class="left">
+					<text class="category-item">{{i18n.t('app.user.menu.feedback')}}</text>
+				</view>
+				<u-icon name="arrow-right" size="14" color="#b9b9b9"></u-icon>
+			</view>
+			<view class="content" v-for="item in list" :key="item.category" @click="goCategory(item)">
+				<view class="left">
+					<text class="category-item">{{item.label}}</text>
+				</view>
+				<u-icon name="arrow-right" size="14" color="#b9b9b9"></u-icon>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		getHelpCategoryListApi
+	} from '@/api/modules/help.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+			}
+		},
+		created() {
+			this.getCategoryList();
+		},
+		methods: {
+			goFeedback() {
+				uni.$u.route('/pages/help-center/feedback');
+			},
+			async getCategoryList() {
+				const res = await getHelpCategoryListApi();
+				if (res && res.datas) {
+					this.list = res.datas;
+				}
+			},
+			goCategory(item) {
+				uni.$u.route({
+					url: '/pages/help-center/help-category?item=' + encodeURIComponent(JSON.stringify(item))
+				});
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.help-container {
+		width: 750rpx;
+		padding: 0 20rpx;
+	}
+	
+	.content {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 20rpx 0;
+		border-bottom: 1rpx solid $app-surface;
+	
+		.left {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: flex-start;
+	
+			.category-item {
+				color: $app-text-secondary;
+				font-size: $font-size-md;
+			}
+		}
+	}
+</style>

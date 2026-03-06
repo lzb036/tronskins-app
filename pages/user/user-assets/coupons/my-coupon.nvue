@@ -1,0 +1,189 @@
+<!-- 我的卡券 -->
+<template>
+	<view class="container">
+		<u-skeleton :loading="isLoading" rows="10">
+			<ul class="coupon-list" v-if="list&&list.length>0">
+				<li class="coupon-item" v-for="(item, index) in list" :key="index">
+					<view class="left">
+						<text class="lable">{{ item.typeName }}</text>
+						<text class="mode">{{ i18n.t(item.mode) }}</text>
+						<text class="type">{{ item.typeName }}</text>
+					</view>
+					<view class="right" :style="getBackground(item.couponsType)">
+						<text class="time">{{ i18n.t('app.user.coupon.validity') }}:{{ formatDate(item.expireTime*1000) }}</text>
+						<text class="use-btn">{{ i18n.t('app.user.coupon.use') }}</text>
+					</view>
+				</li>
+			</ul>
+			<view class="no-coupons">
+				<text class="tips" v-if="!list||list.length==0">{{ i18n.t('app.user.coupon.none') }}</text>
+			</view>
+			<view class="go-exchange-wrap">
+				<button class="go-exchange" type="primary" @click="goExchange()">{{ i18n.t('app.user.coupon.exchange_go') }}</button>
+			</view>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js'
+	import {
+		getMyCouponListApi
+	} from '@/api/modules/user.js'
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+				isLoading: false,
+			}
+		},
+		mounted() {
+			this.getMyCouponList();
+		},
+		methods: {
+			async getMyCouponList() {
+				try {
+					this.isLoading = true;
+					const res = await getMyCouponListApi();
+					if (res && res.datas) {
+						this.list = res.datas.list;
+						this.list.forEach(item => {
+							item.mode = 'pointExchange';
+						});
+					}
+				} catch (e) {
+
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			goExchange() {
+				uni.$u.toast(this.i18n.t('app.system.message.not_open'));
+				return;
+				// uni.$u.route('/pages/user/points/index')
+			},
+			getBackground(type) {
+				if (type == 1) {
+					return {
+						background: '#fb8402'
+					}
+				} else if (type == 2) {
+					return {
+						background: '#752d17'
+					}
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../../theme.scss";
+	
+	.container {
+		width: 750rpx;
+	}
+
+	.no-coupons {
+		width: 750rpx;
+		padding: 200rpx 20rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		.tips {
+			font-size: $font-size-md;
+			text-align: center;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.go-exchange-wrap {
+		width: 750rpx;
+		background-color: $app-background;
+		position: absolute;
+		bottom: 0rpx;
+		left: 0;
+	}
+
+	.go-exchange {
+		width: 710rpx;
+		margin: 10rpx 20rpx;
+		background: $app-link;
+		border: 1rpx solid $app-link;
+	}
+
+	.coupon-list {
+		width: 750rpx;
+		padding: 20rpx;
+	}
+
+	.coupon-item {
+		width: 710rpx;
+		height: 200rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 40rpx;
+		border: 1rpx solid $app-divider;
+
+		.left {
+			width: 430rpx;
+			height: 200rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			justify-content: center;
+			padding-left: 30rpx;
+
+			.lable {
+				color: $app-text-primary;
+				font-size: $font-size-md;
+			}
+
+			.type {
+				color: $app-text-primary;
+				font-size: $font-size-sm;
+			}
+
+			.mode {
+				color: $app-link;
+				font-size: $font-size-sm;
+				text-align: center;
+				padding: 10rpx 20rpx;
+				border: 1rpx solid $app-link;
+				border-radius: 5rpx;
+				margin: 20rpx 0;
+			}
+		}
+
+		.right {
+			width: 280rpx;
+			height: 200rpx;
+			display: flex;
+			flex-wrap: wrap;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			border-left: 2rpx dashed $app-background;
+
+			.time {
+				color: $app-background;
+				font-size: $font-size-md;
+				margin-bottom: 20rpx;
+			}
+
+			.use-btn {
+				color: $app-background;
+				font-size: $font-size-md;
+				text-align: center;
+				padding: 10rpx 30rpx;
+				border: 1rpx solid $app-background;
+				border-radius: 10rpx;
+			}
+		}
+	}
+</style>

@@ -1,0 +1,234 @@
+<template>
+	<view class="container">
+		<list-refresh :dataList="list" :total="list" height="44" @refresh="reload()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<view class="table-content" @click="readSubmit(item)">
+					<view class="notify-trade-item">
+						<view class="time">
+							<text class="value">{{createTime(item)}}</text>
+							<view :class="[item.read ? 'not-dot' : 'dot']"></view>
+						</view>
+						<rich-text :nodes="getHtml(item.message)" @click="toOrderDetail(item)"
+							class="message"></rich-text>
+					</view>
+				</view>
+			</template>
+		</list-refresh>
+		<u-popup safeAreaInsetTop mode="right" :show="show" @close="show = false">
+			<deliver-drawer :buyer="sendItem ? sendItem.buyer : ''" @success="reload()"
+				@close="show = false"></deliver-drawer>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import DeliverDrawer from '@/components/shop/order-manage/DeliverDrawer.nvue';
+	import {
+		stringFormat
+	} from '@/utils/str/index.js';
+	import {
+		ReadMessageApi,
+		GetTradeListApi
+	} from "@/api/modules/notify.js";
+	import parseHtml from '@/utils/helpers/html-parser.js';
+
+	export default {
+		props: ['appId'],
+		components: {
+			ListRefresh,
+			DeliverDrawer
+		},
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+				show: false,
+				sendItem: {},
+				pager: {
+					page: 1,
+					pageSize: 10,
+				},
+				total: null,
+			}
+		},
+		mounted() {
+			this.getQueryList();
+		},
+		methods: {
+			getHtml(str) {
+				return new parseHtml(str);
+			},
+			async readSubmit(item) {
+				if (item.read) return;
+				try {
+					const res = await ReadMessageApi({
+						id: item.id
+					});
+					if (res.code == 0) {
+						item.read = true;
+						if (item.status == 2) return;
+						uni.showToast({
+							title: res.datas,
+							icon: 'none',
+							duration: 1000
+						});
+					}
+				} catch (error) {
+					//TODO handle the exception
+				}
+			},
+			toOrderDetail(item) {
+				// 1出售   3购买
+				if (item.type==1) {
+					uni.switchTab({
+						url: '/pages/shop/shop-manage/index'
+					})
+				} else if (item.type == 3) {
+					uni.$u.route('/pages/shop/order-manage/my-purchase');
+				}
+			},
+			async getQueryList() {
+				try {
+					let params = {
+						page: this.pager.page,
+						pageSize: this.pager.pageSize
+					}
+					const res = await GetTradeListApi(params);
+					if (res.code == 0) {
+						this.list = this.list.concat(res.datas.list);
+						this.total = res.datas.pager.total;
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			createTime(item) {
+				return uni.$u.timeFormat(item.createTime, 'yyyy-mm-dd hh:MM:ss');
+			},
+			/**
+			 * status
+			 * -1:已取消
+			 * 2:待发货
+			 * 3:发货待确认
+			 * 4:待接收
+			 * 6:完成
+			 * cancelReason
+			 * 0:管理员取消报价
+			 * 1:买家取消交易
+			 * 2:卖家取消交易
+			 * 3:支付超时
+			 * 4:发货超时
+			 * 5:收货超时
+			 * 6:Steam问题或Steam交易系统故障
+			 * 7:买家拒绝收货
+			 * 8:买家修改了报价
+			 * 9:物品不存在
+			 * 10:接收方库存私密导致 报价失败
+			 * 11:账号交易问题
+			 * 12:买家 Trade URl 无效
+			 * 13:交易暂挂
+			 */
+			notifyContent(item) {
+				let str = item.details[0].length > 1 ? '...' : '';
+				if (item.status == -1) {
+					if ([0, 2, 3, 5, 6, 9, 10, 12].includes(item.cancelReason)) {
+						return stringFormat(i18n.t('app.trade.notify.cancelled'), item.details[0].market_name + str, item
+							.cancelDesc)
+					} else if (item.cancelReason == 4) {
+						return stringFormat(i18n.t('app.trade.notify.seller_not_shipped'), item.details[0].market_name + str)
+					} else if ([1, 7].includes(item.cancelReason)) {
+						return stringFormat(i18n.t('app.trade.notify_1'), item.details[0].market_name + str, item
+							.cancelDesc)
+					} else if (item.cancelReason == 5) {
+						return stringFormat(i18n.t('trade.notify.seller_not_receiving'), item.details[0].market_name + str)
+					} else if (item.cancelReason == 8) {
+						return stringFormat(i18n.t('app.trade.notify_2'), item.details[0].market_name + str)
+					} else {
+						return item.cancelDesc
+					}
+				}
+				if ([2, 3].includes(item.status)) {
+					// 物品已经被购买
+					return stringFormat(i18n.t('app.trade.notify.buy'), item.details[0].market_name + str)
+				}
+				if (item.status == 4 || item.status == 6) {
+					// 收货
+					return stringFormat(i18n.t('app.trade.notify.shipping'), item.details[0].market_name + str)
+				}
+
+				// // 店铺被封禁
+				// return stringFormat(i18n.t('app.trade.notify.ban'), '')
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getQueryList();
+			},
+			reload() {
+				this.list = [];
+				this.pager.page = 1;
+				this.getQueryList();
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	
+	.table-content {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding: 12rpx 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+	}
+	
+	.notify-trade-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-start;
+		padding: 12rpx 0;
+	
+		.time {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			margin-bottom: 10rpx;
+	
+			.dot {
+				width: 10rpx;
+				height: 10rpx;
+				border-radius: 50rpx;
+				background: $app-danger-dark;
+				margin-bottom: 20rpx;
+			}
+	
+			.not-dot {
+				width: 10rpx;
+				height: 10rpx;
+				border-radius: 50rpx;
+				background: $app-background;
+				margin-bottom: 20rpx;
+			}
+	
+			.value {
+				text-align: left;
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				margin-left: 10rpx;
+				margin-right: 10rpx;
+			}
+		}
+	
+		.message {
+			width: 710rpx;
+			color: $app-text-primary;
+			font-size: $font-size-md;
+			text-align: left;
+		}
+	}
+</style>

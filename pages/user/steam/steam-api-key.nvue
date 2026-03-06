@@ -1,0 +1,59 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('steam.api_key.get')" leftIconColor="#fff" :titleStyle="{color:'#fff'}" bgColor="#171a21"
+			:autoBack="true" placeholder></u-navbar>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				web: null,
+				steamId: null,
+				systemInfo: {}
+			}
+		},
+		async onBackPress(options) {
+			if(this.web){
+				await this.close();
+				await uni.redirectTo({
+					url: '/pages/user/steam/steam-setting'
+				});
+				return true;
+			}
+		},
+		mounted() {
+			this.systemInfo = uni.getSystemInfoSync();
+			this.getSteamApiKey();
+		},
+		methods: {
+			getSteamApiKey() {
+				const page = this.$scope.$getAppWebview();
+				this.web = plus.webview.create('', 'WKWebview', {
+					plusrequire: 'none',
+					kernel: 'WKWebview',
+					'uni-app': 'none',
+					top: this.systemInfo.statusBarHeight + 44 + 'px',
+					height: this.systemInfo.windowHeight + 'px',
+					progress: {
+						color: '#74bcff'
+					}
+				});
+				const url = "https://steamcommunity.com/dev/apikey";
+				this.web.loadURL(url);
+				page.append(this.web);
+				this.web.show();
+			},
+			close() {
+				if (this.web) {
+					this.web.close();
+					this.web = null;
+				}
+			}
+		}
+	}
+</script>

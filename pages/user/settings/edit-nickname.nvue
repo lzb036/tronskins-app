@@ -1,0 +1,99 @@
+<!-- 修改昵称 -->
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.setting.nickname_change')" :autoBack="true" placeholder></u-navbar>
+		<view class="nickname-box">
+			<input type="text" :placeholder="i18n.t('app.user.setting.nickname_placeholder')" class="input" v-model="nickname"></input>
+			<button class="button" type="primary" size="mini" @click="nickNameConfirm()">{{i18n.t('app.common.confirm')}}</button>
+			<div class="tips-box">
+				<text class="nickname-tip">1.{{i18n.t('app.user.setting.nickname_tips_1')}}</text>
+				<text class="nickname-tip">2.{{i18n.t('app.user.setting.nickname_tips_2')}}</text>
+				<text class="nickname-tip">3.{{i18n.t('app.user.setting.nickname_tips_3')}}</text>
+			</div>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import {
+		userInfoApi,
+		editNicknameApi
+	} from '@/api/modules/user.js';
+
+	export default {
+		data() {
+			return {
+				i18n: i18n,
+				nickname: ''
+			}
+		},
+		methods: {
+			async nickNameConfirm() {
+				let params = {
+					nickname: this.nickname
+				}
+				const res = await editNicknameApi(params);
+				console.log(res);
+				if (res.code === 0) {
+					uni.showToast({
+						title: res.datas,
+						icon: 'none',
+						duration: 2000
+					});
+					setTimeout(() => {
+						uni.navigateBack();
+					}, 1000);
+				} else {
+					uni.showToast({
+						title: res.datas,
+						icon: 'none',
+						duration: 2000
+					});
+				}
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+	.nickname-box {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		.input {
+			width: 710rpx;
+			height: 80rpx;
+			color: black;
+			background-color: $app-surface-elevated;
+			border-radius: 5rpx;
+			text-align: left;
+			font-size: $font-size-md;
+			margin: 25rpx 0;
+			padding: 0 35rpx;
+		}
+
+		.button {
+			width: 710rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			text-align: center;
+			color: $app-background;
+			margin: 20rpx 0;
+		}
+	}
+
+	.tips-box {
+		width: 750rpx;
+		padding: 0 20rpx;
+		margin-top: 25rpx;
+
+		.nickname-tip {
+			color: $app-text-thirdly;
+			font-size: $font-size-md;
+			text-align: left;
+		}
+	}
+</style>

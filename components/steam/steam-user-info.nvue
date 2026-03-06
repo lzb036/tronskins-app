@@ -1,0 +1,82 @@
+<template>
+	<view class="steam-user-info">
+		<text class="tips">{{i18n.t('app.steam.message.account_not_match')}}</text>
+		<view class="user-info">
+			<image v-if="avatar" class="avatar" :src="avatar"></image>
+			<text v-if="nickname" class="nickname">{{i18n.t('app.user.setting.nickname')+': '+nickname}}</text>
+		</view>
+		<text class="confirm-btn" @click="confirm">{{i18n.t('app.common.confirm')}}</text>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	export default {
+		props: {
+			avatar: {
+				type: String,
+				default: ''
+			},
+			nickname: {
+				type: String,
+				default: ''
+			}
+		},
+		data() {
+			return {
+				i18n: i18n
+			}
+		},
+		methods: {
+			confirm(){
+				this.$emit('close');
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.steam-user-info{
+		width: 680rpx;
+		padding: 20rpx;
+		background: $app-background;
+	}
+	
+	.tips {
+		font-size: $font-size-lg;
+		color: $app-text-primary;
+		text-align: center;
+		margin-bottom: 20rpx;
+	}
+	
+	.user-info{
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx;
+		
+		.avatar{
+			width: 120rpx;
+			height: 120rpx;
+		}
+		
+		.nickname{
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			padding-left: 20rpx;
+		}
+	}
+	
+	.confirm-btn{
+		text-align: center;
+		color: $app-background;
+		background: #5b5b5b;
+		border-radius: 5rpx;
+		font-size: $font-size-md;
+		border: 1rpx solid #5b5b5b;
+		margin-top: 30rpx;
+		padding: 20rpx;
+	}
+</style>

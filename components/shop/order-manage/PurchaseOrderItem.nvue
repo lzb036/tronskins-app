@@ -1,0 +1,306 @@
+<template>
+	<view class="pending-shopment-item" v-if="item" @click="route()">
+		<view class="header">
+			<text class="create-time">{{createTime(item)}}</text>
+			<text :class="![2,3].includes(item.status)?'item-status':'status'"
+				v-if="[2, 3, 4, 5, 6].includes(item.status)"
+				:style="{color: [5,6].includes(item.status) ? 'green' : '#c22121' }">{{ item.statusName }}</text>
+			<text v-if="![2, 3, 4, 5, 6,-1].includes(item.status)" class="status">{{item.statusName}}</text>
+			<text v-if="![2, 3, 4, 5, 6].includes(item.status)" class="status">{{item.cancel_desc}}</text>
+		</view>
+		<view class="item-info" v-if="item.details.length == 1">
+			<PhaseItem :item="item.details[0]" :schema="schemas[item.details[0].market_hash_name]" :bg="getRarity()"
+				:imageUrl="getImageUrl()" :width="180" :schemas="stickers"></PhaseItem>
+			<view class="price-wrap">
+				<view class="left">
+					<text class="market-name">{{getMarketName()}}</text>
+					<text class="wear" v-if="item.details[0].paint_wear">{{item.details[0].paint_wear}}</text>
+					<wear-progress-bar v-if="item.details[0].paint_wear" :paintWear="item.details[0].paint_wear"
+						:width="180"></wear-progress-bar>
+				</view>
+				<view class="right">
+					<view class="time" v-if="item.protection_time&&item.status==5">
+						<text class="time__item">{{ item.remainTime }}
+						</text>
+					</view>
+					<text class="market-price">{{currencySymbol + ' ' + item.price}}</text>
+				</view>
+			</view>
+			<view class="btn-wrap">
+				<text class="cancel-btn" v-if="item.status == 2"
+					@click.stop="cancelOrder">{{ i18n.t('app.trade.order.cancel') }}</text>
+			</view>
+		</view>
+		<view class="item-info" v-else>
+			<view class="item-details-list">
+				<PhaseItem class="item" v-for="(j,idx) in item.details" :key="j.id" :item="j"
+					:schema="schemas[j.market_hash_name]" :bg="getRarity()" :imageUrl="getImageUrl()" :width="180">
+				</PhaseItem>
+			</view>
+			<text class="item-nums" :style="getNumsStyle(item.details.length)">+{{ item.details.length - 3 }}</text>
+			<view class="multiple-right">
+				<view class="time" v-if="item.protection_time&&item.status==5">
+					<text class="time__item">{{ item.remainTime }}
+					</text>
+				</view>
+				<text class="total-cost" v-if="item.price">{{ currencySymbol + ' ' + item.price }}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config/index.js';
+	import i18n from '@/utils/locales/i18n.js';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import PhaseItem from '@/components/game-item/PhaseItem.nvue';
+	import WearProgressBar from '@/components/game-item/WearProgressBar.nvue';
+	import {
+		CancelOrderApi
+	} from '@/api/modules/shop/shop-product.js';
+
+	export default {
+		props: ['schemas', 'item', 'users', 'stickers'],
+		components: {
+			PhaseItem,
+			WearProgressBar
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+			}
+		},
+		methods: {
+			getNumsStyle(length) {
+				if (length <= 3) {
+					return {
+						opacity: 0
+					}
+				}
+				return {
+					opacity: 1
+				}
+			},
+			route() {
+				uni.$u.route('/pages/shop/order-manage/order-purchase-detail', {
+					item: encodeURIComponent(JSON.stringify(this.item)),
+					schemas: encodeURIComponent(JSON.stringify(this.schemas)),
+					users: encodeURIComponent(JSON.stringify(this.users)),
+					stickers: encodeURIComponent(JSON.stringify(this.stickers)),
+				});
+			},
+			getExterior() {
+				try {
+					return this.schemas[this.item.details[0].market_hash_name].tags.exterior
+				} catch (e) {
+
+				}
+			},
+			getRarity() {
+				try {
+					return this.schemas[this.item.details[0].market_hash_name].tags.rarity.color
+				} catch (e) {
+
+				}
+			},
+			getImageUrl() {
+				if (this.schemas && this.item) {
+					if (this.item.details[0]) {
+						return this.schemas[this.item.details[0].market_hash_name] ? this.schemas[this.item.details[0]
+							.market_hash_name].image_url : '';
+					}
+				}
+			},
+			getMarketName() {
+				if (this.schemas && this.item) {
+					if (this.item.details[0]) {
+						return this.item.details[0].market_name
+					}
+				}
+			},
+			createTime(item) {
+				return uni.$u.timeFormat(item.create_time, 'yyyy-mm-dd hh:MM');
+			},
+			cancelOrder(e) {
+				e.stopPropagation();
+				uni.showModal({
+					title: this.i18n.t('app.trade.order.cancel'),
+					content: this.i18n.t('app.trade.order.message.confirm_cancel'),
+					confirmText: this.i18n.t('app.common.confirm'),
+					cancelText: this.i18n.t('app.common.cancel'),
+					success: async (res) => {
+						if (res.confirm) {
+							const resp = await CancelOrderApi({
+								id: this.item.id
+							});
+							if (resp.code == 0) {
+								uni.$u.toast(this.i18n.t('app.system.message.success'));
+								return;
+							}
+							uni.$u.toast(resp.datas);
+						}
+					}
+				});
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+	.pending-shopment-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding: 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+		position: relative;
+
+		.create-time {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			padding-bottom: 10rpx;
+		}
+
+		.header {
+			width: 710rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.item-info {
+			width: 710rpx;
+			flex-direction: row;
+			align-items: center;
+		}
+
+		.item-nums {
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			margin-left: 5rpx;
+		}
+
+		.item-details-list {
+			width: 530rpx;
+			display: flex;
+			flex-direction: row;
+			overflow: hidden;
+		}
+
+		.item {
+			margin-right: 10rpx;
+		}
+
+		.price-wrap {
+			width: 530rpx;
+			height: 52px;
+			display: flex;
+			flex-direction: row;
+			align-items: flex-start;
+			padding: 10rpx 0 0 20rpx;
+			position: relative;
+
+			.left {
+				width: 370rpx;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-start;
+			}
+
+			.right {
+				width: 140rpx;
+				display: flex;
+				flex-direction: column;
+				align-items: flex-end;
+			}
+
+			.market-name {
+				width: 370rpx;
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				lines: 1;
+				text-overflow: ellipsis;
+			}
+
+			.market-price {
+				font-size: $font-size-md;
+				color: $app-text-price;
+				padding-top: 20rpx;
+				text-align: right;
+				font-weight: bold;
+				padding-right: 0;
+			}
+
+			.wear {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				padding: 5rpx 0;
+			}
+		}
+
+		.multiple-right {
+			width: 140rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+			justify-content: center;
+		}
+
+		.total-cost {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			font-weight: bold;
+			padding: 10rpx;
+			padding-right: 0;
+		}
+
+		.btn-wrap {
+			width: 130rpx;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: flex-start;
+		}
+
+		.cancel-btn {
+			width: 130rpx;
+			color: $app-background;
+			padding: 8rpx 0;
+			font-size: $font-size-sm;
+			text-align: center;
+			background: $app-link;
+			border: 1rpx solid $app-link;
+			border-radius: 5rpx;
+		}
+
+		.item-status {
+			width: 200rpx;
+			height: 40rpx;
+			line-height: 40rpx;
+			font-size: $font-size-xs;
+			text-align: right;
+			color: $app-text-thirdly;
+		}
+
+		.status {
+			width: 200rpx;
+			font-size: $font-size-xs;
+			text-align: right;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.time {
+		@include flex;
+		align-items: center;
+
+		&__item {
+			color: orange;
+			font-size: $font-size-count-time;
+		}
+	}
+</style>

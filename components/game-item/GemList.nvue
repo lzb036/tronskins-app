@@ -1,0 +1,45 @@
+<template>
+	<view class="gem-container">
+		<view class="gem-item" v-for="(gem,index) in list" :key="index" >
+			<image class="img" :style="getGemItemStyle(gem)" :src="gem.imageUrl"></image>
+		</view>
+	</view>
+</template>
+
+<script>
+	
+	export default {
+		props: {
+			list: {
+				type: Array,
+				default: []
+			},
+			width: {
+				type: Number,
+				default: 30,
+			},
+		},
+		methods: {
+			getGemItemStyle(gem){
+				return{
+					width: this.width + 'rpx',
+					height: this.width + 'rpx',
+					border: '2rpx solid ' + gem.borderColor
+				}
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+.gem-container{
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
+	
+	.img {
+		margin-right: 5rpx;
+	}
+}
+</style>

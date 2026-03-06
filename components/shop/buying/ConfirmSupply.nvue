@@ -1,0 +1,172 @@
+<template>
+	<view class="supply-container">
+		<text class="supply-title">{{ i18n.t("app.trade.supply.text") }}</text>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.inventory.count") }}</text>
+			<view class="value-box">
+				<text class="value">{{ list.length }}</text>
+				<text class="unit">{{ i18n.t("app.market.unit_qty") }}</text>
+			</view>
+		</view>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.inventory.upshop.expected_income") }}</text>
+			<view class="value-box">
+				<text class="unit">{{ currencySymbol }}</text>
+				<text class="value">{{ Math.floor(total*100)/100 }}</text>
+			</view>
+		</view>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.inventory.upshop.handling_charge") }}</text>
+			<view class="value-box">
+				<text class="unit">{{ currencySymbol }}</text>
+				<text class="value">{{ fee }}</text>
+			</view>
+		</view>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.trade.supply.actual_income") }}</text>
+			<view class="value-box">
+				<text class="unit">{{ currencySymbol }}</text>
+				<text class="income">{{ income }}</text>
+			</view>
+		</view>
+		<view class="content">
+			<text class="label">{{ i18n.t("app.user.integral.award") }}</text>
+			<view class="value-box">
+				<text class="value">{{ Math.floor(total*100)/100 }}</text>
+				<text class="unit">{{ i18n.t("app.user.integral.unit") }}</text>
+			</view>
+		</view>
+		<view class="footer">
+			<text class="cancel btn" @click="cancel()">{{ i18n.t("app.common.cancel") }}</text>
+			<text class="confirm btn" @click="confirm()">{{ i18n.t("app.trade.supply.text") }}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import {
+		GetSysParamsApi
+	} from '@/api/modules/shop/shop-product.js';
+
+	export default {
+		props: {
+			list: {
+				type: Array,
+				default: () => []
+			}
+		},
+		data() {
+			return {
+				i18n: i18n,
+				fee: 0,
+				total: 0,
+				income: 0,
+				currencySymbol: config.currencySymbol,
+			}
+		},
+		mounted() {
+			this.getFeeRate();
+		},
+		methods: {
+			async getFeeRate() {
+				this.total = 0;
+				const res = await GetSysParamsApi();
+				if (res.code != 0) return;
+				this.list.forEach(item => {
+					this.total += item.price;
+				})
+				this.fee = Math.floor(((this.total * res.datas.fee) * 1e6 / 1e6) * 100) / 100;
+				this.income = Math.round(((this.total - this.fee) * 1e6 / 1e6) * 100) / 100;
+			},
+			cancel() {
+				this.$emit("cancel");
+			},
+			confirm() {
+				this.$emit("confirm");
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.supply-container {
+		width: 680rpx;
+		padding: 30rpx 25rpx;
+		background: $app-background;
+	}
+
+	.supply-title {
+		font-weight: bold;
+		text-align: left;
+		font-size: $font-size-lg;
+		color: $app-text-primary;
+		margin-bottom: 20rpx;
+	}
+
+	.content {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10rpx 5rpx;
+
+		.label {
+			font-size: $font-size-md;
+			color: $app-text-thirdly;
+		}
+
+		.value-box {
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: center;
+		}
+
+		.income {
+			color: #d9a72a;
+			font-size: $font-size-md;
+			margin: 0 5rpx;
+			font-weight: bold;
+		}
+
+		.value {
+			margin: 0 5rpx;
+			font-weight: bold;
+			color: $app-link;
+			font-size: $font-size-md;
+		}
+
+		.unit {
+			font-size: $font-size-md;
+			color: $app-text-thirdly;
+		}
+	}
+
+	.footer {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: 20rpx;
+
+		.cancel {
+			background: #45536d;
+		}
+
+		.confirm {
+			background: #4774c9;
+		}
+		
+		.btn {
+			width: 300rpx;
+			text-align: center;
+			padding: 14rpx 0;
+			color: $app-background;
+			font-size: $font-size-md;
+		}
+	}
+</style>

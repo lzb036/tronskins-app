@@ -1,0 +1,165 @@
+<!-- 店铺 最近成交 -->
+<template>
+	<u-skeleton :loading="isLoading" rows="10">
+		<list-refresh :dataList="list" :total="list.length" height="175" @refresh="refresh()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<view class="pending-shopment-item">
+					<base-item :schema_id="item.schemaId" :imageUrl="item.image_url" :width="180"></base-item>
+					<view class="price-wrap">
+						<text class="market-name">{{item.market_name}}</text>
+						<text class="market-price">{{item.time}}</text>
+					</view>
+				</view>
+			</template>
+		</list-refresh>
+	</u-skeleton>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import config from '@/config/index.js';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import {
+		ShopTransactionApi
+	} from '@/api/modules/shop/shop.js';
+	import {
+		getGameType
+	} from '@/utils/storage/modules/domain.js';
+
+	export default {
+		props: ['uuid', 'appid'],
+		components: {
+			BaseItem,
+			ListRefresh
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				list: [],
+				pager: {
+					page: 1,
+					pageSize: 20
+				},
+				isLoading: false,
+			}
+		},
+		created() {
+			this.getSellRecordList();
+		},
+		watch: {
+			appid(val, oldVal) {
+				if (val != oldVal) {
+					this.refresh()
+				}
+			}
+		},
+		methods: {
+			checkAppid() {
+				if (this.appid != getGameType()) {
+					this.appid = getGameType();
+					this.refresh();
+				}
+			},
+			async getSellRecordList() {
+				const res = await ShopTransactionApi({
+					appId: this.appid,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					uuid: this.uuid
+				});
+				if(res.statusCode == 200){
+					this.list = this.list.concat(res.datas);
+				}
+				
+			},
+			refresh() {
+				uni.$u.debounce(() => {
+					try {
+						this.isLoading = true;
+						this.list = [];
+						this.pager.page = 1;
+						this.getSellRecordList();
+					} catch (error) {
+						//TODO handle the exception
+					} finally {
+						this.isLoading = false;
+					}
+				}, 500)
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getSellRecordList();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.pending-shopment-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		padding: 20rpx;
+		position: relative;
+		border-bottom: 1rpx solid $app-surface;
+	}
+
+	.item-header {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+
+		.item-user {
+			width: 550rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+
+			.item-avatar {
+				width: 50rpx;
+				height: 50rpx;
+				border-radius: 50rpx;
+				border: 1rpx solid $app-surface;
+			}
+
+			.item-nickname {
+				font-size: $font-size-sm;
+				color: $app-text-thirdly;
+				padding: 20rpx 0;
+				margin-left: 10rpx;
+			}
+		}
+
+		.item-statusName {
+			width: 160rpx;
+			font-size: $font-size-sm;
+			color: $app-text-thirdly;
+			text-align: right;
+		}
+	}
+
+	.price-wrap {
+		width: 520rpx;
+		padding-left: 20rpx;
+
+		.market-name {
+			font-size: $font-size-md;
+			color: $app-text-primary;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+
+		.market-price {
+			font-size: $font-size-md;
+			color: $app-text-price;
+			font-weight: bold;
+			padding-top: 20rpx;
+		}
+	}
+</style>

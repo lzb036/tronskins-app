@@ -1,0 +1,215 @@
+<template>
+	<view>
+		<u-navbar :title="i18n.t('app.user.feedback.details')" :autoBack="true" placeholder></u-navbar>
+		<list-refresh :dataList="list" :total="list.length" height="100" @refresh="reload()" @loadMore="loadMore()">
+			<template #item="{ item }">
+				<view>
+					<view class="item-box">
+						<view class="title" v-if="!item.is_admin">
+							<text class="text">{{i18n.t('app.user.feedback.text_before')}}</text>
+							<text class="text create-time">{{item.createTime}}</text>
+							<text class="text" v-if="lan == 'zh_CN' ">{{i18n.t('app.user.feedback.text')}}</text>
+						</view>
+						<text class="context" v-if="!item.is_admin">{{item.context}}</text>
+						<view class="title" v-if="item.is_admin">
+							<text class="text">{{i18n.t('app.user.feedback.customer_service_reply')}}</text>
+							<text class="text create-time">{{item.createTime}}</text>
+						</view>
+						<text v-if="item.is_admin" class="context">{{item.context}}</text>
+						<view v-if="item.images.length > 0" class="img-box">
+							<u-album class="img" singleSize="86" :urls="item.images"></u-album>
+						</view>
+					</view>
+				</view>
+			</template>
+		</list-refresh>
+		<view class="btn-box" v-if="!['2','3'].includes(status)">
+			<text @click="solved()" class="problem-solved-btn">{{i18n.t('app.user.feedback.solved')}}</text>
+			<text @click="additional()" class="additional-btn">{{i18n.t('app.user.feedback.additional')}}</text>
+		</view>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import {
+		GetFeedbackDetailApi,
+		SolveFeedbackApi,
+		MyFeedbackDetailListApi
+	} from "@/api/modules/notify.js";
+
+	export default {
+		components: {
+			ListRefresh
+		},
+		data() {
+			return {
+				i18n: i18n,
+				scrollTop: 0,
+				id: "",
+				item: {},
+				list: [],
+				status: null,
+				pager: {
+					page: 1,
+					pageSize: 50,
+					total: 0,
+				},
+				lan: ''
+			}
+		},
+		onLoad(options) {
+			this.id = options.id;
+			this.status = options.status;
+		},
+		created() {
+			this.lan = this.es_app_lan;
+			this.getQueryItem();
+			this.reload();
+		},
+		mounted() {
+			uni.$on('feedback-success', () => {
+				this.reload();
+			})
+		},
+		methods: {
+			async getQueryItem() {
+				let params = {
+					id: this.id
+				}
+				const res = await GetFeedbackDetailApi(params);
+				if (res.code == 0) {
+					this.item = res.datas;
+				}
+			},
+			async getDetailList() {
+				let params = {
+					ticketId: this.id,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+				}
+				const res = await MyFeedbackDetailListApi(params);
+				if (res && res.datas.pager && (this.list.length < res.datas.pager.total)) {
+					this.list = this.list.concat(res.datas.list).reverse();
+					this.list.forEach(item => {
+						item.createTime = uni.$u.timeFormat(item.createTime * 1000,'yyyy-mm-dd hh:MM:ss');
+					});
+				}
+			},
+			async solved() {
+				let params = {
+					id: this.id
+				}
+				const res = await SolveFeedbackApi(params);
+				if (res.statusCode == 200) {
+					uni.$u.toast(res.datas);
+					let timer = setInterval(() => {
+						uni.navigateBack();
+						clearInterval(timer);
+						uni.$emit('feedback-success');
+					}, 1000);
+				}
+			},
+			additional() {
+				uni.$u.route('/pages/help-center/create-feedback', {
+					type: 'addFeedback',
+					id: this.id
+				});
+			},
+			reload() {
+				this.list = [];
+				this.pager.page = 1;
+				this.getDetailList();
+			},
+			loadMore() {
+				this.pager.page++;
+				this.getDetailList();
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../theme.scss";
+	.base-list {
+		padding: 20rpx;
+	}
+
+	.item-box {
+		display: flex;
+		flex-direction: column;
+		padding: 20rpx;
+		border-radius: 3rpx;
+		border: 1rpx solid $app-surface;
+		margin: 0 1rpx 20rpx;
+
+		.title {
+			display: flex;
+			flex-direction: row;
+			margin-bottom: 20rpx;
+
+			.text {
+				color: $app-text-hint;
+				font-size: $font-size-md;
+			}
+
+			.create-time {
+				margin: 0 4rpx;
+			}
+		}
+
+		.context {
+			font-size: $font-size-md;
+			padding-bottom: 10rpx;
+			margin-bottom: 20rpx;
+		}
+
+		.img-box {
+			display: flex;
+			flex-direction: row;
+			padding-bottom: 10rpx;
+
+			.img {
+				width: 180rpx;
+				height: 180rpx;
+				border: 4rpx dashed $app-surface;
+				margin-right: 10rpx;
+			}
+		}
+	}
+
+	.btn-box {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		justify-content: center;
+		background-color: $app-background;
+		border-top: 1rpx solid $app-surface;
+
+		.problem-solved-btn {
+			width: 375rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			color: $app-background;
+			font-size: $font-size-md;
+			background-color: $app-text-secondary;
+			border-color: $app-text-secondary;
+			text-align: center;
+		}
+
+		.additional-btn {
+			width: 375rpx;
+			height: 80rpx;
+			line-height: 80rpx;
+			color: $app-background;
+			font-size: $font-size-md;
+			background-color: $app-link;
+			border-color: $app-link;
+			text-align: center;
+		}
+	}
+</style>

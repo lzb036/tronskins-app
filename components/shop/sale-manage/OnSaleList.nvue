@@ -1,0 +1,256 @@
+<template>
+	<view>
+		<sort-wear-filter :appid="appid" :showWear="showWear" :showPaintKits="showPaintKits" :paintKits="paintKits" :exteriorKey="exteriorKey"
+			:showPercentage="showPercentage" @sort="refresh($event,'sort')" @wear="refresh($event,'wear')"
+			@filter="refresh($event,'filter')" @paintKitsSort="refresh($event,'paintKits')"></sort-wear-filter>
+		<u-skeleton :loading="isLoading" rows="10">
+			<list-refresh height="244" :total="total" :dataList="list" @refresh="refresh()" @loadMore="loadMore()">
+				<template #item="{ item, index }">
+					<on-sale-item :item="item" :schemas="schemas" :users="users" :appid="appid" :index="index"
+						@reload="refresh()"></on-sale-item>
+				</template>
+			</list-refresh>
+		</u-skeleton>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import ListRefresh from '@/components/layout/list-refresh.nvue';
+	import SortWearFilter from '@/components/layout/SortWearFilter.nvue';
+	import OnSaleItem from './OnSaleItem.nvue';
+	import {
+		isLogin
+	} from '@/services/user.js';
+	import {
+		GameItemOnSaleListApi,
+		GameItemOnSaleList2Api
+	} from '@/api/modules/market.js';
+
+	export default {
+		props: [
+			'schema_id', 
+			'appid', 
+			'showPaintKits', 
+			'paintKits', 
+			'marketHashName',
+			'exteriorKey'
+		],
+		components: {
+			ListRefresh,
+			OnSaleItem,
+			SortWearFilter
+		},
+		data() {
+			return {
+				i18n: i18n,
+				list: [],
+				schemas: {},
+				users: {},
+				field: '',
+				asc: '',
+				paintWearMin: undefined,
+				paintWearMax: undefined,
+				minPrice: undefined,
+				maxPrice: undefined,
+				paintSeed: undefined,
+				pager: {
+					page: 1,
+					pageSize: 50
+				},
+				total: null,
+				isLoading: false,
+				showWear: false,
+				showPercentage: false,
+				paintIndex: undefined,
+				percentageMin: undefined,
+				percentageMax: undefined,
+			}
+		},
+		mounted() {
+			this.init();
+			uni.$on('order-sell-reload', () => {
+				this.refresh();
+			});
+			uni.$on('product-detail-reload', () => {
+				this.refresh();
+			});
+		},
+		destroyed() {
+			uni.removeStorageSync('app-details-schema');
+		},
+		watch: {
+			schema_id(val, oldVal) {
+				if (val != oldVal) {
+					this.refresh();
+				}
+			},
+			exteriorKey(newVal, oldVal) {
+				if (newVal !== oldVal) {
+					console.log('外观类型变化:', newVal);
+					this.paintWearMin = undefined;
+					this.paintWearMax = undefined;
+					this.refresh();
+				}
+			}
+		},
+		methods: {
+			init() {
+				const arr = ['Fade', 'Case Hardened'];
+				this.showPercentage = !!(this.marketHashName && arr.some(str => this.marketHashName.includes(str)));
+				this.queryList();
+				if (this.paintKits && this.paintKits.length > 0) {
+					this.paintKits.unshift({
+						"descriptionTag": "unlimited",
+						"flag": false,
+						"id": "undefined",
+						"name": "unlimited",
+						"phase": this.i18n.t("app.common.unlimited"),
+						"wearMax": undefined,
+						"wearMin": undefined
+					});
+				}
+			},
+			async queryList() {
+				let res;
+				let params = {
+					appId: this.appid,
+					schemaId: this.schema_id,
+					page: this.pager.page,
+					pageSize: this.pager.pageSize,
+					field: this.field,
+					asc: this.asc,
+					paintWearMin: this.paintWearMin,
+					paintWearMax: this.paintWearMax,
+					paintSeed: this.paintSeed,
+					paintIndex: this.paintIndex,
+					minPrice: this.minPrice,
+					maxPrice: this.maxPrice,
+					percentageMin: this.percentageMin,
+					percentageMax: this.percentageMax
+				}
+				if (isLogin()) {
+					res = await GameItemOnSaleList2Api(params);
+				} else {
+					res = await GameItemOnSaleListApi(params);
+				}
+				if (res) {
+					this.users = res.datas.users;
+					this.schemas = res.datas.schemas && res.datas.schemas[this.schema_id] ? res.datas.schemas : uni.getStorageSync("app-details-schema");
+					if (res.datas.schemas?.[this.schema_id]) {
+						uni.setStorageSync("app-details-schema", res.datas.schemas);
+					}
+					this.showWear = !!(this.schemas?.[this.schema_id]?.tags?.exterior?.name);
+					this.list = this.list.concat(res.datas.sells);
+					if(res.datas.pager){
+						this.total = res.datas.pager.total;
+					}
+				}
+			},
+			async refresh(e, type) {
+				try {
+					this.isLoading = true;
+					this.showWear = false;
+					this.paintIndex = undefined;
+					this.percentageMin = undefined;
+					this.percentageMax = undefined;
+					if (type == 'sort') {
+						this.field = e.field;
+						this.asc = e.asc;
+					}
+					if (type == 'wear') {
+						this.paintWearMin = e.min;
+						this.paintWearMax = e.max;
+					}
+					if (type == 'filter') {
+						this.minPrice = e.priceMin ?? undefined;
+						this.maxPrice = e.priceMax ?? undefined;
+						this.paintWearMin = e.wearMin ?? undefined;
+						this.paintWearMax = e.wearMax ?? undefined;
+						this.paintSeed = e.templateNumber ?? undefined;
+						this.paintIndex = e.paintIndex ?? undefined;
+						this.percentageMin = e.percentageMin ?? undefined;
+						this.percentageMax = e.percentageMax ?? undefined;
+					}
+					if (type == 'paintKits') {
+						this.paintIndex = e.paintIndex;
+						this.percentageMin = e.percentageMin ?? undefined;
+						this.percentageMax = e.percentageMax ?? undefined;
+					}
+					this.list = [];
+					this.pager.page = 1;
+					await this.queryList();
+				} catch (error) {
+					console.log('刷新列表错误:', error);
+				} finally {
+					this.isLoading = false;
+				}
+			},
+			loadMore() {
+				if (this.total === 0 || this.list.length >= this.total) {
+					return;
+				}
+				this.pager.page++;
+				this.queryList();
+			},
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../../theme.scss";
+
+	.sale-item {
+		width: 750rpx;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 20rpx;
+		border-bottom: 1rpx solid $app-surface;
+	}
+
+	.sale-center {
+		width: 314rpx;
+		display: flex;
+		flex-direction: column;
+		padding-left: 20rpx;
+	}
+
+	.sale-right {
+		width: 240rpx;
+		display: flex;
+		flex-direction: row;
+		justify-content: flex-end;
+		align-items: flex-end;
+
+		.buy-btn {
+			width: 90rpx;
+			height: 50rpx;
+			margin: 0 5rpx;
+		}
+	}
+
+	.sale-shop {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+
+		.user-img {
+			width: 36rpx;
+			height: 36rpx;
+			border-radius: 50rpx;
+		}
+
+		.user-name {
+			font-size: $font-size-sm;
+			height: 30rpx;
+			text-align: left;
+			color: $app-text-primary;
+			padding-top: 3rpx;
+			padding-left: 10rpx;
+			lines: 1;
+			text-overflow: ellipsis;
+		}
+	}
+</style>

@@ -1,0 +1,112 @@
+<!-- 游戏切换 -->
+<template>
+	<view>
+		<view class="overlay" v-if="showOverlay" @click="close()"></view>
+		<image class="game-icon-img" @click="openGameModel()" :src="`/static/image/game/icon/${ appid }.png`"></image>
+		<view class="game-types-container" v-if="show" :style="{top: systemInfo.statusBarHeight + 44 + 'px' }">
+			<view v-for="game in gameTypeList" :key="game.value" class="game-type-item" @click="changeGame(game)">
+				<image class="img" :src="'/static/image/game/icon/'+ game.value + '.png'"></image>
+				<text :class="[game.value == appid ? 'name-active' : 'name']">{{game.label}}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+	import config from '@/config/index.js';
+	import {
+		getGameType,
+		setGameType
+	} from '@/utils/storage/modules/domain.js';
+	export default {
+		data() {
+			return {
+				appid: getGameType(),
+				gameTypeList: config.gameTypes,
+				systemInfo: null,
+				show: false,
+				showOverlay: false
+			}
+		},
+		created() {
+			this.systemInfo = uni.getSystemInfoSync();
+		},
+		mounted() {
+			uni.$on('app-navbar-appid', () => {
+				if(this.appid != getGameType()){
+					this.appid = getGameType();
+				}
+			})
+		},
+		methods: {
+			openGameModel() {
+				this.show = !this.show;
+				this.showOverlay = this.show;
+			},
+			changeGame(game) {
+				this.show = false;
+				this.showOverlay = false;
+				if (game.value == this.appid) return;
+				this.appid = game.value;
+				setGameType(game.value);
+				this.$emit('gameChange');
+			},
+			close(){
+				this.show = false;
+				this.showOverlay = false;
+			}
+		}
+	}
+</script>
+
+<style scoped lang="scss">
+	@import "../../theme.scss";
+	
+	.game-icon-img {
+		width: 40rpx;
+		height: 40rpx;
+	}
+
+	.game-types-container {
+		width: 750rpx;
+		position: fixed;
+		left: 0;
+
+		.game-type-item {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			padding: 20rpx;
+			border-bottom: 1rpx solid $app-surface;
+			background-color: $app-background;
+
+			.img {
+				width: 40rpx;
+				height: 40rpx;
+			}
+
+			.name {
+				font-size: $font-size-md;
+				color: $app-text-primary;
+				padding-left: 20rpx;
+			}
+
+			.name-active {
+				font-size: $font-size-md;
+				color: $app-link;
+				padding-left: 20rpx;
+			}
+		}
+	}
+	
+	.overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.2);
+		z-index: 9999;
+	}
+</style>

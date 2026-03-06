@@ -1,0 +1,151 @@
+<!-- 我的通知 -->
+<template>
+	<view>
+		<u-tabs :current="index" @click="handleTabClick" :list="tabs"
+			:style="{paddingTop:getSystemInfo().statusBarHeight + 'px'}" :activeStyle="{
+				fontSize:'24rpx',
+			    color: '#2a2a2a',
+				fontWeight:'bold'
+			}" :inactiveStyle="{
+				fontSize:'24rpx',
+			    color: '#888',
+			}" itemStyle="padding:10rpx 20rpx;height: 24px;" lineHeight="0">
+			<view slot="left" style="padding-left: 10rpx;">
+				<u-icon name="arrow-left" size="16" color="#4a4a4a" bold @click="navigateBack()"></u-icon>
+			</view>
+			<view class="tabs-right" slot="right">
+				<image class="read-icon" src="/static/image/user/message-read.png" mode="" @click="readSubmit()">
+				</image>
+				<image v-if="index == 0" class="read-icon" src="/static/image/user/message-clear.png" mode=""
+					@click="clearSubmit()">
+				</image>
+			</view>
+		</u-tabs>
+		<swiper :style="{height:getSystemInfo().windowHeight- 44 - getSystemInfo().statusBarHeight + 'px'}"
+			:current="index" :duration="300" @change="handleSwiperChange" class="swiper-box">
+			<swiper-item>
+				<notify-trade ref="tradeRef"></notify-trade>
+			</swiper-item>
+			<swiper-item>
+				<notify-bulletin ref="notifyRef"></notify-bulletin>
+			</swiper-item>
+		</swiper>
+
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n.js';
+	import NotifyTrade from "@/components/notify/NotifyTrade.nvue";
+	import NotifyBulletin from "@/components/notify/NotifyBulletin.nvue";
+	import {
+		ReadAllMyTradeLogApi,
+		ClearMyTradeLogApi,
+		ReadAllNotifyApi
+	} from "@/api/modules/notify.js";
+
+	export default {
+		components: {
+			NotifyTrade,
+			NotifyBulletin,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				mode: "trade",
+				index: 0,
+				tabs: [{
+						name: i18n.t("app.system.notice.transaction"),
+						value: "trade"
+					},
+					{
+						name: i18n.t("app.system.notice.announcement"),
+						value: "bulletin"
+					}
+				],
+			}
+		},
+		methods: {
+			clearSubmit() {
+				uni.showModal({
+					title: i18n.t('app.system.notice.clear_tips'),
+					confirmText: i18n.t('app.common.confirm'),
+					cancelText: i18n.t('app.common.cancel'),
+					success: async (res) => {
+						if (res.confirm) {
+							const res = await ClearMyTradeLogApi();
+							if (res.code == 0) {
+								uni.showToast({
+									title: res.datas,
+									icon: 'none',
+									duration: 1000
+								});
+								this.$refs.tradeRef.reload();
+							}
+						}
+					}
+				});
+			},
+			async readSubmit() {
+				if (this.index == 0) {
+					const res = await ReadAllMyTradeLogApi();
+					if (res.code == 0) {
+						uni.showToast({
+							title: i18n.t('app.system.notice.readall'),
+							icon: 'none',
+							duration: 1000,
+						});
+						this.$refs.tradeRef.reload();
+					}
+					return;
+				} else {
+					const res = await ReadAllNotifyApi();
+					if (res.code == 0) {
+						uni.showToast({
+							title: i18n.t('app.system.notice.readall'),
+							icon: 'none',
+							duration: 1000,
+						});
+						this.$refs.notifyRef.refresh();
+					}
+					return;
+				}
+			},
+			getSystemInfo() {
+				const systemInfo = uni.getSystemInfoSync();
+				return systemInfo;
+			},
+			navigateBack() {
+				uni.navigateBack();
+			},
+			/**
+			 * 点击切换tabs
+			 * @param {Object} e
+			 */
+			handleTabClick(e) {
+				this.index = e.index;
+			},
+			/**
+			 * 滑动切换tabs
+			 * @param {Object} e
+			 */
+			handleSwiperChange(e) {
+				this.index = e.detail.current;
+			},
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.tabs-right {
+		padding-right: 20rpx;
+		display: flex;
+		flex-direction: row;
+	}
+
+	.read-icon {
+		width: 35rpx;
+		height: 35rpx;
+		margin-left: 20rpx;
+	}
+</style>

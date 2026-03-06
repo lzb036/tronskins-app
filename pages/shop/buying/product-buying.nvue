@@ -1,0 +1,570 @@
+<!-- 饰品求购 -->
+<template>
+	<view class="buying-container">
+		<u-navbar :title="i18n.t('app.trade.purchase.text')" :autoBack="true" placeholder></u-navbar>
+		<view class="buyying-item-header">
+			<base-item :imageUrl="item.image_url" :width="180" :num="item.nums"></base-item>
+			<view class="header-title">
+				<text class="market-name">{{item.market_name}}</text>
+				<text
+					class="reference-price">{{i18n.t('app.market.detail.sale_lowest') +':' + currencySymbol + ' '+ item.sell_min}}</text>
+				<text
+					class="reference-price">{{i18n.t('app.market.detail.purchase_highest') +':' + currencySymbol + ' '+ item.buy_max}}</text>
+			</view>
+		</view>
+		<view class="purchase-type"
+			v-if="item.appid == 730 &&(showPaintKits||!['CSGO_Type_WeaponCase', 'Type_CustomPlayer','CSGO_Tool_Sticker'].includes(goodsType))"
+			@click="toFilter()">
+			<text class="label">{{i18n.t('app.market.filter.text')}}</text>
+			<text class="value">{{ tags? showTags : i18n.t('app.common.unlimited')}}</text>
+			<u-icon name="arrow-right" color="#888" size="14"></u-icon>
+		</view>
+		<view class="purchase-price">
+			<text class="label">{{i18n.t('app.trade.purchase.price')}}</text>
+			<input class="price-input" v-model="buyPrice" type="digit" inputmode="decimal" @input="checkPrice"
+				@blur="calibrationPrice"
+				:placeholder="i18n.t('app.market.filter.price_lowest')+currencySymbol+purMinPrice"></input>
+		</view>
+		<view class="purchase-price">
+			<text class="label">{{i18n.t('app.trade.purchase.num')}}</text>
+			<input class="price-input" v-model="buyNum" type="digit" inputmode="decimal" @input="checkNum"
+				:placeholder="i18n.t('app.trade.purchase.num_placeholder')"></input>
+		</view>
+		<view class="purchase-price" v-if="item.purNums>=0&&item.remainNum>=0">
+			<text class="purchase-tips">{{ getPurchaseTips(item.purNums,item.remainNum) }}</text>
+		</view>
+		<view class="tip-wrap">
+			<text class="tip-text">1.{{i18n.t('app.trade.purchase.buyer_notice_1')}}</text>
+			<text class="tip-red">{{i18n.t('app.trade.purchase.buyer_notice_2')}}</text>
+			<text class="tip-text">{{i18n.t('app.trade.purchase.buyer_notice_3')}}</text>
+		</view>
+		<text class="tip-text-1">2.{{i18n.t('app.trade.purchase.buyer_notice_4')}}</text>
+
+		<view class="select-content">
+			<view class="select-left">
+				<text class="select-label"> {{i18n.t('app.market.price_total')}}</text>
+				<text class="select-value"> {{currencySymbol}}{{(buyPrice * buyNum).toFixed(2)}}</text>
+			</view>
+			<view class="select-right">
+				<text class="up-shop-btn"
+					@click="buyShopSubmit()">{{i18n.t('app.market.detail.release_purchase')}}</text>
+			</view>
+		</view>
+		<u-popup :show="show" @close="show=false" mode="right">
+			<SortPaintKitsFilter :show="show" :appid="item.appid" :schemaId="item.schema_id"
+				:exteriorKey="getExteriorKey()" style="width: 680rpx;" :showPaintKits="showPaintKits"
+				:paintKits="paintKits" @submit="handleFilterSubmit" @close="show=false">
+			</SortPaintKitsFilter>
+		</u-popup>
+	</view>
+</template>
+
+<script>
+	import i18n from '@/utils/locales/i18n';
+	import config from '@/config/index.js';
+	import BaseItem from '@/components/game-item/BaseItem.nvue';
+	import SortPaintKitsFilter from '@/components/layout/SortPaintKitsFilter.nvue';
+	import {
+		OrderItemBuyingApi,
+		getOrderBuyingMinPriceApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		mybuyRemainNumApi
+	} from '@/api/modules/market.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
+	import {
+		GetSysParamsApi
+	} from '@/api/modules/shop/shop-product.js';
+	import {
+		stringFormat
+	} from '@/utils/str/index.js';
+
+	export default {
+		components: {
+			BaseItem,
+			SortPaintKitsFilter,
+		},
+		data() {
+			return {
+				i18n: i18n,
+				currencySymbol: config.currencySymbol,
+				item: {
+					appid: '',
+					schema_id: '',
+					image_url: '',
+					market_name: '',
+					sell_min: '',
+					sell_max: '',
+					buy_min: '',
+					buy_max: '',
+					reference_price: '',
+					purNums: 0,
+					remainNum: 0
+				},
+				paintKits: undefined,
+				buyPrice: '',
+				buyNum: '',
+				show: false,
+				tags: undefined,
+				showTags: undefined,
+				goodsType: undefined,
+				min_price: undefined,
+				purMinPrice: undefined,
+				showPaintKits: false
+			}
+		},
+		onLoad(options) {
+			this.item.appid = options.appid;
+			this.item.schema_id = options.schema_id;
+			this.item.image_url = options.image_url;
+			this.item.market_name = options.market_name;
+			this.item.sell_min = options.sell_min;
+			this.item.sell_max = options.sell_max;
+			this.item.buy_min = options.buy_min;
+			this.item.buy_max = options.buy_max;
+			this.item.reference_price = options.reference_price;
+			this.goodsType = options.goodsType;
+			this.showPaintKits = !!(options.showPaintKits === 'false' ? false : true);
+			this.exteriorKey = options.exteriorKey || '';
+			if (options.paintKits && this.showPaintKits) {
+				this.paintKits = JSON.parse(decodeURIComponent(options.paintKits));
+			}
+		},
+		mounted() {
+			this.getMinPrice();
+			this.getRemainNums();
+			this.getSysParams();
+		},
+		methods: {
+			getExteriorKey() {
+				return this.exteriorKey || '';
+			},
+			async getMinPrice() {
+				try {
+					let params = {
+						appId: this.item.appid,
+						schemaId: this.item.schema_id,
+					}
+					const res = await getOrderBuyingMinPriceApi(params);
+					if (res.code == 0) {
+						this.purMinPrice = res.datas;
+					}
+				} catch (e) {
+					console.log(e)
+				}
+			},
+			async getRemainNums() {
+				const res = await mybuyRemainNumApi({
+					schemaId: this.item.schema_id
+				});
+				if (res.code == 0) {
+					this.item.purNums = res.datas.purchaseNum;
+					this.item.remainNum = res.datas.remainNum;
+				} else {
+					uni.$u.toast(res.datas);
+					return;
+				}
+			},
+			async getSysParams() {
+				const res = await GetSysParamsApi();
+				if (res.code == 0) {
+					this.min_price = res.datas.minPrice;
+				}
+			},
+			getPurchaseTips(purNum, remainNum) {
+				return stringFormat(this.i18n.t('app.trade.purchase.message.remaining_tips'), purNum, remainNum);
+			},
+			checkPrice(e) {
+				let decimal = e.detail.value.split(".");
+				if (!decimal) return;
+				if (decimal[1] && decimal[1].length > 2) {
+					this.$nextTick(() => {
+						this.buyPrice = Math.floor(e.detail.value * 100) / 100;
+						return;
+					});
+				}
+			},
+			calibrationPrice(e) {
+				if (e.detail.value.includes(".")) {
+					let decimal = e.detail.value.split(".");
+					this.$nextTick(() => {
+						if (decimal[1].length > 0) {
+							this.buyPrice = e.detail.value;
+						} else {
+							this.buyPrice = decimal[0];
+						}
+						if (this.buyPrice < this.min_price) {
+							this.buyPrice = this.min_price;
+						}
+						return;
+					});
+				}
+			},
+			checkNum(e) {
+				if (e.detail.value.includes(".")) {
+					let decimal = e.detail.value.split(".");
+					this.$nextTick(() => {
+						this.buyNum = decimal[0];
+						uni.$u.toast(this.i18n.t('app.market.detail.message.num_error'));
+						return;
+					});
+				}
+				let num = Number(e.detail.value);
+				if (num <= 1000) return;
+				this.$nextTick(() => {
+					this.buyNum = 1000;
+				});
+			},
+			async buyShopSubmit() {
+				try {
+					if (this.item.remainNum == 0) {
+						uni.$u.toast(this.i18n.t('app.trade.purchase.message.num_error'));
+						return;
+					}
+					if (this.buyPrice == 0) {
+						uni.$u.toast(this.i18n.t('app.market.filter.message.price_error'));
+						return;
+					}
+					if (this.buyNum == 0) {
+						uni.$u.toast(this.i18n.t('app.market.detail.message.num_error'));
+						return;
+					}
+
+					if (this.buyPrice < this.purMinPrice) {
+						uni.$u.toast(this.i18n.t('app.trade.purchase.message.balance_insufficient'));
+						return;
+					}
+					const usdBuyPrice = this.buyPrice;
+					const sellMinUsd = this.min_price;
+					const showPopConfirm = usdBuyPrice >= 10 && usdBuyPrice > sellMinUsd;
+					if (showPopConfirm) {
+						const confirmRes = await new Promise((resolve) => {
+							uni.showModal({
+								title: this.i18n.t('app.system.tips.title'),
+								content: this.i18n.t('app.trade.purchase.message.confirm_to_buy'),
+								confirmText: this.i18n.t('app.common.confirm'),
+								cancelText: this.i18n.t('app.common.cancel'),
+								success: (res) => resolve(res)
+							});
+						});
+						// 用户取消则终止提交
+						if (!confirmRes.confirm) {
+							return;
+						}
+					}
+					uni.showLoading({
+						title: i18n.t('app.system.tips.please_wait'),
+						mask: true
+					});
+					let userInfo = getAppUserInfo();
+					let total = this.buyNum * this.buyPrice;
+					if (Number(userInfo.fund.available) + Number(userInfo.fund.gift) < total) {
+						uni.hideLoading();
+						uni.showModal({
+							title: this.i18n.t('app.system.tips.title'),
+							content: this.i18n.t('app.trade.purchase.message.supply_price_error'),
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+							success: (res) => {
+								if (res.confirm) {
+									this.toRecharge();
+								}
+							}
+						});
+						return;
+					}
+					let params = {
+						nums: this.buyNum,
+						price: this.buyPrice,
+						appId: this.item.appid,
+						schemaId: this.item.schema_id,
+						paintIndex: this.tags && this.tags.phaseId ? this.tags.phaseId : undefined,
+						paintWearMax: this.tags && this.tags.wearMax ? this.tags.wearMax : undefined,
+						paintWearMin: this.tags && this.tags.wearMin ? this.tags.wearMin : undefined,
+					}
+					const res = await OrderItemBuyingApi(params);
+					uni.hideLoading();
+					if (res && res.datas.includes('lower than')) {
+						uni.showModal({
+							content: res.datas,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+						})
+						return;
+					}
+					if (res.datas.includes('Steam issue') || res.datas.includes('Inventory privacy')) {
+						let msg = this.i18n.t('app.inventory.message.privacy') + getAppUserInfo().config.nickname
+						uni.showModal({
+							content: res.datas.includes('Steam issue') ? this.i18n.t(
+								'app.steam.message.trading_restrictions') : msg,
+							confirmText: this.i18n.t('app.common.confirm'),
+							cancelText: this.i18n.t('app.common.cancel'),
+
+						})
+						return;
+					}
+					if (res && res.code == -1) {
+						uni.$u.toast(res.datas);
+						return;
+					}
+					if (res && res.code == 0) {
+						uni.navigateBack();
+						uni.$u.toast(this.i18n.t('app.system.message.success'));
+						uni.$emit('order-buying-success');
+						return;
+					}
+				} catch (e) {
+					console.log(e)
+					uni.hideLoading();
+				}
+			},
+			toRecharge() {
+				uni.$u.route({
+					url: '/pages/user/user-assets/wallet/recharge'
+				});
+			},
+			toFilter() {
+				this.show = true;
+			},
+			handleFilterSubmit(tags) {
+				this.tags = tags;
+				let phase_text = tags.phase ? tags.phase + ', ' : '';
+				this.showTags = phase_text + this.i18n.t('app.market.filter.csgo.wear_interval') +
+					': ' + tags.wearMin + '-' + tags.wearMax;
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	@import "../../../theme.scss";
+
+	.buying-container {
+		width: 750rpx;
+		flex: 1;
+		background-color: $app-surface;
+
+		.buyying-item-header {
+			width: 750rpx;
+			padding: 10rpx 20rpx;
+			display: flex;
+			flex-direction: row;
+			background-color: $app-background;
+
+			.header-title {
+				width: 500rpx;
+				margin-left: 20rpx;
+				display: flex;
+				flex-direction: column;
+				flex-wrap: wrap;
+
+				.market-name {
+					font-size: $font-size-sm;
+					color: $app-text-primary;
+					lines: 1;
+					text-overflow: ellipsis;
+				}
+
+				.reference-price {
+				  font-size: $font-size-sm;   
+				  color: $app-text-secondary; 
+				  font-weight: normal;        
+				  margin-top: 10rpx;
+				}
+			}
+		}
+
+		.sale-price-wrap {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+			margin-bottom: 10rpx;
+
+			.sale-price-item {
+				width: 375rpx;
+				height: 100rpx;
+				align-items: center;
+				padding-top: 10rpx;
+
+				.price-text {
+					font-size: $font-size-md;
+					font-weight: bold;
+					color: $app-text-price;
+				}
+
+				.price-label {
+					margin-top: 5rpx;
+					font-size: $font-size-sm;
+					color: $app-text-thirdly;
+				}
+			}
+		}
+
+		.purchase-price {
+			width: 750rpx;
+			padding: 20rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+			border-bottom: 1rpx solid $app-surface;
+
+			.label {
+				width: 200rpx;
+				display: flex;
+				flex-direction: column;
+				text-align: center;
+				font-size: $font-size-sm;
+			}
+
+			.price-input {
+				width: 550rpx;
+				font-size: $font-size-sm;
+				text-align: left;
+				color: #222;
+			}
+
+			.purchase-tips {
+				width: 550rpx;
+				font-size: $font-size-sm;
+				text-align: left;
+				margin-left: 200rpx;
+				color: $app-text-thirdly;
+			}
+		}
+
+		.purchase-type {
+			width: 750rpx;
+			padding: 20rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			background-color: $app-background;
+			border-bottom: 1rpx solid $app-surface;
+			margin-bottom: 10rpx;
+			border-top: 1rpx solid $app-surface;
+			margin-top: 10rpx ;
+
+			.label {
+				width: 200rpx;
+				display: flex;
+				flex-direction: column;
+				text-align: center;
+				padding-right: 20rpx;
+				font-size: $font-size-sm;
+			}
+
+			.value {
+				width: 480rpx;
+				font-size: $font-size-sm;
+				text-align: left;
+			}
+		}
+
+		.tip-wrap {
+			width: 750rpx;
+			display: flex;
+			flex-direction: row;
+			padding: 20rpx 80rpx 10rpx 30rpx;
+			background-color: $app-surface;
+			flex-wrap: wrap;
+
+			.tip-text {
+				font-size: $font-size-sm;
+				color: $app-text-hint;
+			}
+
+			.tip-red {
+				color: $app-danger-dark;
+				font-size: $font-size-sm;
+			}
+		}
+
+		.tip-text-1 {
+			width: 750rpx;
+			font-size: $font-size-sm;
+			color: $app-text-hint;
+			padding: 10rpx 80rpx 10rpx 30rpx;
+			background-color: $app-surface;
+		}
+
+		.tip-red {
+			color: $app-danger;
+			font-size: $font-size-sm;
+		}
+
+		.select-content {
+			width: 750rpx;
+			height: 80rpx;
+			display: flex;
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+			padding-left: 20rpx;
+			background-color: $app-background;
+			position: fixed;
+			left: 0;
+			bottom: 0rpx;
+			border-top: 1rpx solid $app-surface;
+
+			.select-left {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				background-color: $app-background;
+
+				.select-all {
+					width: 100rpx;
+					color: $app-text-hint;
+					text-align: center;
+					font-size: $font-size-sm;
+					padding: 10rpx 0;
+					margin-right: 10rpx;
+				}
+
+				.select-label {
+					font-size: $font-size-sm;
+					color: $app-text-hint;
+					margin-right: 10rpx;
+				}
+
+				.select-value {
+					font-size: $font-size-md;
+					color: $app-text-price;
+					font-weight: bold;
+				}
+			}
+
+			.select-right {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				background-color: $app-background;
+
+				.up-shop-btn {
+					width: 200rpx;
+					height: 80rpx;
+					line-height: 80rpx;
+					font-size: $font-size-md;
+					text-align: center;
+					color: $app-background;
+					background-color: $app-success-dark;
+				}
+
+				.change-price-btn {
+					width: 200rpx;
+					height: 80rpx;
+					line-height: 80rpx;
+					font-size: $font-size-md;
+					text-align: center;
+					color: $app-background;
+					background-color: #a2896a;
+				}
+			}
+		}
+	}
+</style>
