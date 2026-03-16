@@ -86,6 +86,9 @@
 	import {
 		get2FAList,
 	} from '@/utils/storage/modules/2fa-token.js';
+	import {
+		getAppUserInfo,
+	} from '@/utils/storage/modules/user.js';
 	import { stringFormat } from '@/utils/str/index.js';
 
 	export default {
@@ -132,8 +135,8 @@
 					return;
 				}
 
-				let guardList = get2FAList();
-				if (!this.userInfo.need2FA || !this.userInfo.safeTokenStatus || guardList.length == 0) {
+				const guardItem = this.getCurrentGuardItem();
+				if (!this.userInfo.need2FA || !this.userInfo.safeTokenStatus || !guardItem?.secret) {
 					uni.showModal({
 						title: i18n.t('app.system.tips.title'),
 						content: i18n.t('app.user.guard.set_tips'),
@@ -149,6 +152,9 @@
 				}
 				try {
 					let code = this.getUserTwoFACode();
+					if (!code) {
+						return;
+					}
 					const res = await AddUserWithdrawApi({
 						amount: this.amount,
 						account: this.addressInfo.account,
@@ -223,10 +229,39 @@
 			getWithdrawFeeTips(){
 				return stringFormat(this.i18n.t('app.user.withdraw.tips_2'), this.fee);
 			},
+			getCurrentUserAuthContext() {
+				const cachedUserInfo = getAppUserInfo() || {};
+				return {
+					userId: this.userInfo?.id || this.userInfo?.userId || cachedUserInfo.id || cachedUserInfo.userId,
+					appUse: this.userInfo?.appUse || cachedUserInfo.appUse,
+				};
+			},
+			getCurrentGuardItem() {
+				const guardList = get2FAList();
+				const {
+					userId,
+					appUse
+				} = this.getCurrentUserAuthContext();
+				if (!userId) {
+					return null;
+				}
+
+				if (appUse) {
+					const exactGuardItem = guardList.find(item => item.userId == userId && item.appUse == appUse);
+					if (exactGuardItem) {
+						return exactGuardItem;
+					}
+				}
+
+				const sameUserGuardList = guardList.filter(item => item.userId == userId && item.secret);
+				if (sameUserGuardList.length == 1) {
+					return sameUserGuardList[0];
+				}
+
+				return null;
+			},
 			getUserTwoFACode() {
-				let guardList = get2FAList();
-				let guardItem = guardList.find(item => (item.userId == this.userInfo.id) && (item.appUse == this.userInfo
-					.appUse));
+				let guardItem = this.getCurrentGuardItem();
 				if (guardItem) {
 					const jsotp = require('jsotp');
 					// 当前时间/秒
@@ -257,7 +292,15 @@
 			async getUserInfo() {
 				const res = await userInfoApi();
 				if (res.code == 0) {
-					this.userInfo = res.datas;
+					const cachedUserInfo = getAppUserInfo() || {};
+					const currentUserId = res.datas?.id || res.datas?.userId || cachedUserInfo.id || cachedUserInfo.userId;
+					const sameUserGuardList = get2FAList().filter(item => item.userId == currentUserId && item.secret);
+					const derivedAppUse = sameUserGuardList.length == 1 ? sameUserGuardList[0].appUse : undefined;
+					this.userInfo = {
+						...cachedUserInfo,
+						...res.datas,
+						appUse: res.datas?.appUse || cachedUserInfo.appUse || derivedAppUse,
+					};
 				}
 			},
 			hideKeyboard() {

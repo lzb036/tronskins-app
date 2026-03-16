@@ -75,11 +75,6 @@
 					value: '',
 					auth: true,
 					path: '/pages/system-settings/server-list'
-				}, {
-					label: '认证调试',
-					value: '',
-					auth: true,
-					path: '/pages/system-settings/auth-debug'
 				}, ],
 				i18n: i18n,
 				systemInfo: {},

@@ -35,6 +35,7 @@
 			};
 		},
 		mounted() {
+			console.log('[VersionUpdate] 组件已挂载，2 秒后开始检测更新');
 			setTimeout(() => {
 				this.checkUpdate();
 			}, 2000);
@@ -43,38 +44,67 @@
 			// 检查更新入口方法
 			async checkUpdate() {
 				try {
-					console.log("开始检测")
+					console.log('[VersionUpdate] ===== 开始检测更新 =====');
+					// #ifdef APP-PLUS
+					if (typeof plus === 'undefined') {
+						console.log('[VersionUpdate] plus API 不可用，跳过检测');
+						return;
+					}
+					// #endif
+
 					plus.runtime.getProperty(plus.runtime.appid, (versionInfo) => {
+						console.log('[VersionUpdate] 当前版本信息:', versionInfo);
+						const requestUrl = getServerCookie() + 'api/public/app/checkupdate';
+						const requestData = {
+							appkey: 'tronskins-app',
+							versionName: versionInfo.version,
+							hotVersion: versionInfo.versionCode,
+							platform: uni.getSystemInfoSync().platform,
+						};
+						const queryString = Object.entries(requestData)
+							.filter(([, value]) => value !== undefined && value !== null && value !== '')
+							.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+							.join('&');
+						const fullRequestUrl = queryString ? `${requestUrl}?${queryString}` : requestUrl;
+
+						console.log('[VersionUpdate] 检查更新请求参数:', requestData);
+						console.log('[VersionUpdate] 检查更新完整请求地址:', fullRequestUrl);
+
 						uni.request({
-							url: getServerCookie() + 'api/public/app/checkupdate',
+							url: requestUrl,
 							method: "GET",
-							data: {
-								appkey: 'tronskins-app',
-								versionName: versionInfo.version,
-								hotVersion: versionInfo.versionCode,
-								platform: uni.getSystemInfoSync().platform,
-							},
+							data: requestData,
 							header: {
 								'content-type': "application/json;charset=UTF-8",
 							},
 						}).then(res => {
+							console.log('[VersionUpdate] 检查更新响应状态:', res.statusCode);
+							console.log('[VersionUpdate] 检查更新响应数据:', res.data);
 							if (res.data.forwardUrl && res.data.forwardUrl.length > 0) {
+								console.log('[VersionUpdate] 发现更新包地址:', res.data.forwardUrl);
 								try {
 									if (res.data.forwardUrl.endsWith(".apk")) {
+										console.log('[VersionUpdate] 检测到 APK 包，打开下载链接:', res.data.packageUrl);
 										plus.runtime.openURL(res.data.packageUrl);
 									} else {
+										console.log('[VersionUpdate] 检测到热更新包，开始下载');
 										this.startDownload(res.data.forwardUrl);
 									}
 								} catch (error) {
-									console.log(error)
+									console.log('[VersionUpdate] 处理更新包失败:', error);
 									this.showDownloadModal = false;
 								}
 							} else {
+								console.log('[VersionUpdate] 未发现可用更新');
 								this.showDownloadModal = false;
 							}
-						})
+						}).catch((error) => {
+							console.log('[VersionUpdate] 检查更新请求失败:', error);
+							this.showDownloadModal = false;
+						});
 					});
 				} catch (e) {
+					console.log('[VersionUpdate] 检查更新异常:', e);
 					this.showDownloadModal = false;
 					uni.showToast({
 						title: i18n.t('app.system.version.download_failed'),
@@ -89,12 +119,12 @@
 				this.downloadProgress = 0;
 
 				// 创建下载任务
-					console.log(forwardUrl)
+				console.log('[VersionUpdate] 开始下载更新包:', forwardUrl);
 				const downloadTask = plus.downloader.createDownload(forwardUrl, {
 					method: 'GET',
 					filename: "_doc/update/"
 				}, (download, status) => {
-					console.log(status)
+					console.log('[VersionUpdate] 下载完成状态:', status, '文件:', download.filename);
 					if (status === 200) {
 						plus.runtime.install(download.filename, {
 							force: true

@@ -32,22 +32,22 @@ function toNumber(value) {
 function extractTokenPayload(responseData) {
 	if (!isRecord(responseData)) return null
 
-	const data = isRecord(responseData.datas)
-		? responseData.datas
-		: (isRecord(responseData.data) ? responseData.data : responseData)
+	const data = isRecord(responseData.datas) ?
+		responseData.datas :
+		(isRecord(responseData.data) ? responseData.data : responseData)
 	if (!isRecord(data)) return null
 
-	const accessToken = typeof data.accessToken === 'string'
-		? data.accessToken
-		: (typeof data.token === 'string' ? data.token : '')
+	const accessToken = typeof data.accessToken === 'string' ?
+		data.accessToken :
+		(typeof data.token === 'string' ? data.token : '')
 	if (!accessToken) return null
 
 	const accessTokenExpireTime = toNumber(data.accessTokenExpireTime)
 	const refreshExpirePrimary = toNumber(data.refreshTokenExpireTime)
 	const refreshExpireFallback = toNumber(data.refreshExpireTime)
-	const refreshTokenExpireTime = refreshExpirePrimary !== null
-		? refreshExpirePrimary
-		: (refreshExpireFallback !== null ? refreshExpireFallback : undefined)
+	const refreshTokenExpireTime = refreshExpirePrimary !== null ?
+		refreshExpirePrimary :
+		(refreshExpireFallback !== null ? refreshExpireFallback : undefined)
 	const header = typeof data.header === 'string' ? data.header : undefined
 
 	const payload = {
@@ -214,7 +214,8 @@ export class Http {
 	}
 
 	async _requestRefreshByEndpoint(endpoint) {
-		return new Promise((resolve) => {
+		// 【修改点1】：增加 reject 回调，用于处理网络异常
+		return new Promise((resolve, reject) => {
 			const baseURL = getServerCookie() || this.config.baseURL
 			const refreshUrl = `${baseURL}${endpoint}`
 			console.log('[AuthRefresh] start', {
@@ -236,6 +237,17 @@ export class Http {
 						statusCode: res.statusCode
 					})
 
+					// 【修改点2】：将 5xx 服务器宕机错误视为网络异常，而不是明确拒绝
+					if (res.statusCode >= 500) {
+						console.warn('[AuthRefresh] server error 5xx', {
+							endpoint,
+							statusCode: res.statusCode
+						})
+						reject(new Error('NETWORK_OR_SERVER_ERROR'))
+						return
+					}
+
+					// 4xx 或明确的业务异常，说明 Token 真的失效了，触发掉线
 					if (res.statusCode < 200 || res.statusCode >= 300) {
 						console.warn('[AuthRefresh] http status not success', {
 							endpoint,
@@ -274,17 +286,19 @@ export class Http {
 					resolve(true)
 				},
 				fail: (error) => {
-					console.error('[AuthRefresh] request fail', {
+					// 【修改点3】：网络断开、超时走 fail，不返回 false，而是抛出异常
+					console.error('[AuthRefresh] request fail (Network Error)', {
 						endpoint,
 						error
 					})
-					resolve(false)
+					reject(new Error('NETWORK_OR_SERVER_ERROR'))
 				}
 			})
 		})
 	}
 
 	async _refreshAccessToken() {
+		// 【修改点4】：遇到网络异常自动往上抛出，不拦截
 		for (const endpoint of this.refreshEndpoints) {
 			const refreshed = await this._requestRefreshByEndpoint(endpoint)
 			if (refreshed) return true
@@ -306,11 +320,17 @@ export class Http {
 			})
 		}
 
-		const refreshed = await this.refreshPromise
-		if (!refreshed) {
-			await this._clearAuthState()
+		// 【修改点5】：捕获网络异常，仅在确定拿到 false(明确拒绝)时才清空状态
+		try {
+			const refreshed = await this.refreshPromise
+			if (!refreshed) {
+				await this._clearAuthState()
+			}
+			return refreshed
+		} catch (error) {
+			console.error('[AuthRefresh] 刷新过程中出现网络/服务异常，保留登录状态', error)
+			throw error // 继续抛出，中断当前的请求，但保留用户登录状态
 		}
-		return refreshed
 	}
 
 	async request(config) {
@@ -328,9 +348,14 @@ export class Http {
 		if (needAutoRefresh) {
 			const token = await getUserToken()
 			if (token) {
-				const available = await this._ensureAccessTokenAvailable(false)
-				if (!available) {
-					return Promise.reject(new Error('登录已过期，请重新登录'))
+				// 【修改点6】：使用 try/catch 捕获网络异常，友好提示用户
+				try {
+					const available = await this._ensureAccessTokenAvailable(false)
+					if (!available) {
+						return Promise.reject(new Error('登录已过期，请重新登录'))
+					}
+				} catch (error) {
+					return Promise.reject(new Error('网络请求失败，请检查网络后重试'))
 				}
 			}
 		}
@@ -357,7 +382,7 @@ export class Http {
 			const rawBizCode = getBusinessCode(response?.data)
 			const rawBizMsg = getBusinessMessage(response?.data)
 			const rawDuration = Date.now() - requestStartedAt
-			console.log(`${logPrefix('[HTTP<<<]', method, reqUrl, requestId)} status=${rawStatusCode} biz=${rawBizCode} dur=${rawDuration}ms${rawBizMsg ? ` msg=${rawBizMsg}` : ''}`)
+			
 			if (
 				needAutoRefresh &&
 				!runtimeConfig.__retryAfterRefresh &&
@@ -365,31 +390,22 @@ export class Http {
 			) {
 				const token = await getUserToken()
 				if (token) {
-					const refreshed = await this._ensureAccessTokenAvailable(true)
-					if (refreshed) {
-						return this.request({
-							...config,
-							__retryAfterRefresh: true
-						})
+					// 【修改点7】：被动重试（收到401）时也要处理网络异常
+					try {
+						const refreshed = await this._ensureAccessTokenAvailable(true)
+						if (refreshed) {
+							return this.request({
+								...config,
+								__retryAfterRefresh: true
+							})
+						}
+					} catch (error) {
+						return Promise.reject(new Error('网络请求失败，请检查网络后重试'))
 					}
 				}
 			}
 
 			const transformedResponse = await this._runInterceptors('response', response)
-			const finalStatusCode = response?.statusCode ?? response?.status
-			const finalBizCode = getBusinessCode(transformedResponse)
-			const finalBizMsg = getBusinessMessage(transformedResponse)
-			const finalDuration = Date.now() - requestStartedAt
-			console.log(`${logPrefix('[HTTP<<<]', method, reqUrl, requestId)} final-status=${finalStatusCode} final-biz=${finalBizCode} dur=${finalDuration}ms${finalBizMsg ? ` msg=${finalBizMsg}` : ''}`)
-			console.log(logPrefix('[HTTP][RES-DETAIL]', method, reqUrl, requestId), {
-				requestId,
-				method,
-				url: reqUrl,
-				statusCode: finalStatusCode,
-				businessCode: finalBizCode,
-				durationMs: finalDuration,
-				data: transformedResponse
-			})
 			return transformedResponse
 		} catch (error) {
 			return this._runInterceptors('response', Promise.reject(error))
@@ -438,9 +454,14 @@ export class Http {
 		const url = (getServerCookie() || this.config.baseURL) + apiUrl
 		const token = await getUserToken()
 		if (token) {
-			const available = await this._ensureAccessTokenAvailable(false)
-			if (!available) {
-				return Promise.reject(new Error('登录已过期，请重新登录'))
+			// 【修改点8】：upload也加防网络抖动的保护
+			try {
+				const available = await this._ensureAccessTokenAvailable(false)
+				if (!available) {
+					return Promise.reject(new Error('登录已过期，请重新登录'))
+				}
+			} catch (error) {
+				return Promise.reject(new Error('网络请求失败，请检查网络后重试'))
 			}
 		}
 		const latestToken = await getUserToken()
@@ -466,9 +487,15 @@ export class Http {
 		return new Promise(async (resolve, reject) => {
 			const token = await getUserToken()
 			if (token) {
-				const available = await this._ensureAccessTokenAvailable(false)
-				if (!available) {
-					reject(new Error('登录已过期，请重新登录'))
+				// 【修改点9】：download也加防网络抖动的保护
+				try {
+					const available = await this._ensureAccessTokenAvailable(false)
+					if (!available) {
+						reject(new Error('登录已过期，请重新登录'))
+						return
+					}
+				} catch (error) {
+					reject(new Error('网络请求失败，请检查网络后重试'))
 					return
 				}
 			}

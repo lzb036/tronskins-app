@@ -52,7 +52,22 @@ export const getAppUserInfo = function() {
 }
 
 export const setAppUserInfo = function(userInfo) {
-	Storage.memory.set(USER_INFO_KEY, userInfo)
+	if (!userInfo || typeof userInfo !== 'object' || Array.isArray(userInfo)) {
+		Storage.memory.set(USER_INFO_KEY, userInfo)
+		return
+	}
+
+	const cachedUserInfo = Storage.memory.get(USER_INFO_KEY)
+	const previousUserInfo =
+		cachedUserInfo && typeof cachedUserInfo === 'object' && !Array.isArray(cachedUserInfo)
+			? cachedUserInfo
+			: {}
+
+	Storage.memory.set(USER_INFO_KEY, {
+		...previousUserInfo,
+		...userInfo,
+		appUse: userInfo.appUse || previousUserInfo.appUse,
+	})
 }
 
 export const getUserToken = async function() {

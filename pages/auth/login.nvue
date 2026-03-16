@@ -52,7 +52,8 @@ import {
 			} from '@/utils/storage/modules/user.js';
 	import {
 		get2FAList,
-		set2FAList
+		set2FAList,
+		findStored2FAByAccount
 	} from '@/utils/storage/modules/2fa-token.js';
 	
 
@@ -69,6 +70,7 @@ export default {
 			},
 			isEmailVerification: false,
 			isTwoFactorAuth: false,
+			hasAttemptedAutoTwoFactor: false,
 			statusBarHeight: 0,
 			loginButtonStyle: {
 				height: '90rpx',
@@ -143,10 +145,87 @@ export default {
 		},
 
 		// 【唯一登录入口】与 Web 端逻辑完全对齐
-		async loginSubmit() {
-			await clearAuthStorage();
+		getTrimmedUsername() {
+			return this.username?.trim() || '';
+		},
+		enterEmailVerification(data) {
+			this.isEmailVerification = true;
+			this.isTwoFactorAuth = false;
+			this.loginFormData.code = '';
+			this.loginFormData.verifyType = data.verifyType;
+			this.loginFormData.authToken = data.authToken;
+			this.loginButtonStyle.marginTop = '60rpx';
+		},
+		enterTwoFactorVerification(data) {
+			this.isTwoFactorAuth = true;
+			this.isEmailVerification = false;
+			this.loginFormData.code = '';
+			this.loginFormData.verifyType = data.verifyType;
+			this.loginFormData.authToken = data.authToken;
+			this.loginButtonStyle.marginTop = '30rpx';
+		},
+		getStoredTwoFactorCode(challengeData = {}) {
+			const guardItem = findStored2FAByAccount({
+				appUse: challengeData.appUse,
+				userId: challengeData.userId,
+				showEmail: challengeData.showEmail,
+				loginAccount: this.getTrimmedUsername(),
+			});
+			if (!guardItem?.secret) {
+				return '';
+			}
 
-			if (!this.username?.trim()) {
+			try {
+				const jsotp = require('jsotp');
+				return jsotp.TOTP(guardItem.secret).now();
+			} catch (error) {
+				console.warn('Failed to generate local 2FA code', error);
+				return '';
+			}
+		},
+		async tryAutoSubmitTwoFactor(challengeData = {}) {
+			if (this.hasAttemptedAutoTwoFactor) {
+				return false;
+			}
+
+			const code = this.getStoredTwoFactorCode(challengeData);
+			if (!/^\d{6}$/.test(code)) {
+				return false;
+			}
+
+			this.hasAttemptedAutoTwoFactor = true;
+			this.loginFormData.code = code;
+
+			await this.loginSubmit({
+				clearExistingAuth: false,
+				showLoading: false,
+				overrideCode: code,
+				overrideVerifyType: challengeData.verifyType,
+				overrideAuthToken: challengeData.authToken,
+				isAutoTwoFactorRetry: true,
+			});
+
+			return true;
+		},
+		async loginSubmit(options = {}) {
+			const {
+				clearExistingAuth = !(this.isEmailVerification || this.isTwoFactorAuth),
+				showLoading = true,
+				overrideCode = null,
+				overrideVerifyType = null,
+				overrideAuthToken = null,
+				isAutoTwoFactorRetry = false,
+			} = options;
+
+			if (!(this.isEmailVerification || this.isTwoFactorAuth)) {
+				this.hasAttemptedAutoTwoFactor = false;
+			}
+
+			if (clearExistingAuth) {
+				await clearAuthStorage();
+			}
+
+			if (!this.getTrimmedUsername()) {
 				uni.$u.toast(this.i18n.t('app.user.login.message.email_error'));
 				return;
 			}
@@ -155,9 +234,20 @@ export default {
 				return;
 			}
 
+			const shouldSubmitVerificationCode =
+				this.isEmailVerification ||
+				this.isTwoFactorAuth ||
+				(typeof overrideAuthToken === 'string' && overrideAuthToken.length > 0);
+			const submitCode =
+				typeof overrideCode === 'string' ? overrideCode : this.loginFormData.code;
+			const submitVerifyType =
+				overrideVerifyType ?? this.loginFormData.verifyType;
+			const submitAuthToken =
+				overrideAuthToken ?? this.loginFormData.authToken;
+
 			// 如果处于验证码输入状态，校验格式
-			if (this.isEmailVerification || this.isTwoFactorAuth) {
-				if (!/^\d{6}$/.test(this.loginFormData.code)) {
+			if (shouldSubmitVerificationCode) {
+				if (!/^\d{6}$/.test((submitCode || '').replace(/\s/g, ''))) {
 					const message = this.isTwoFactorAuth
 						? this.i18n.t('app.user.login.enter_2fa_captcha')
 						: this.i18n.t('app.user.login.enter_captcha');
@@ -182,21 +272,26 @@ export default {
 			}
 
 			const requestParams = {
-				username: this.username.trim(),
+				username: this.getTrimmedUsername(),
 				password: encryptedPassword,
 				udid: deviceId,
 				rememberMe: true
 			};
 
 			// 携带验证码（如果需要）
-			if (this.isEmailVerification || this.isTwoFactorAuth) {
+			if (shouldSubmitVerificationCode) {
 				// 清理验证码中的空格
-				requestParams.code = this.loginFormData.code.replace(/\s/g, '');
-				requestParams.verifyType = this.loginFormData.verifyType;
-				requestParams.authToken = this.loginFormData.authToken;
+				requestParams.code = submitCode.replace(/\s/g, '');
+				requestParams.verifyType = submitVerifyType;
+				requestParams.authToken = submitAuthToken;
 			}
 
-			uni.showLoading({ title: this.i18n.t('app.system.tips.please_wait'), mask: true });
+			if (showLoading) {
+				uni.showLoading({
+					title: this.i18n.t('app.system.tips.please_wait'),
+					mask: true
+				});
+			}
 
 			try {
 				const response = await LoginUserApi(requestParams);
@@ -243,29 +338,36 @@ export default {
 							uni.reLaunch({ url: '/pages/home' });
 						}, 1000);
 					}else if(data.verifyType == 1) {
-						this.isEmailVerification = true;
-						this.isTwoFactorAuth = false;
-						this.loginFormData.code = '';
-						this.loginFormData.authToken = data.authToken;
-						 await this.sendEmailVerificationCode();
+						this.enterEmailVerification(data);
+						await this.sendEmailVerificationCode();
 					}else if(data.verifyType == 2) {
-						this.isTwoFactorAuth = true;
-						this.isEmailVerification = false;
-						this.loginFormData.code = '';
-						this.loginFormData.authToken = data.authToken;
-						this.loginButtonStyle.marginTop = '30rpx';
-						uni.$u.toast(i18n.t('app.user.login.enter_2fa_captcha'));
+						this.enterTwoFactorVerification(data);
+						const hasStartedAutoRetry = await this.tryAutoSubmitTwoFactor(data);
+						if (!hasStartedAutoRetry) {
+							uni.$u.toast(this.i18n.t('app.user.login.enter_2fa_captcha'));
+						}
 					}else{
 						uni.$u.toast(response.datas);
 					}
 					
 				} else {
-					uni.$u.toast(response.datas);
+					if (isAutoTwoFactorRetry && this.isTwoFactorAuth) {
+						this.loginFormData.code = '';
+						uni.$u.toast(this.i18n.t('app.user.login.enter_2fa_captcha'));
+					} else {
+						uni.$u.toast(response.datas);
+					}
 				}
 			} catch (error) {
 				console.error("Login error:", error);
+				if (isAutoTwoFactorRetry && this.isTwoFactorAuth) {
+					this.loginFormData.code = '';
+					uni.$u.toast(this.i18n.t('app.user.login.enter_2fa_captcha'));
+				}
 			} finally {
-				uni.hideLoading();
+				if (showLoading) {
+					uni.hideLoading();
+				}
 			}
 		},
 
