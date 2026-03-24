@@ -152,8 +152,6 @@
 							const cacheKeys = [
 								'schema_tags_570',
 								'schema_tags_730', 
-								'es_2fa_list', 
-								
 							];
 							cacheKeys.forEach(key => {
 								uni.removeStorageSync(key);

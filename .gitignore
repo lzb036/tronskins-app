@@ -25,6 +25,9 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Local cache
+.cache/
+
 # HBuilderX / local metadata
 .hbuilderx/
 .svn/
