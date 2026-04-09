@@ -75,6 +75,11 @@
 					value: '',
 					auth: true,
 					path: '/pages/system-settings/server-list'
+				}, {
+					label: i18n.t('app.user.setting.auth_test_center'),
+					value: '',
+					auth: true,
+					path: '/pages/system-settings/auth-debug'
 				}, ],
 				i18n: i18n,
 				systemInfo: {},

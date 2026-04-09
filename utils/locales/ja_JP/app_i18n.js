@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"Steam 管理",
 "app.user.setting.multilingual":"多言語",
 "app.user.setting.server":"サーバー",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"新しいサーバー追加",
 "app.user.setting.server_ip_placeholder":"IPアドレスを入力してください。",
 "app.user.setting.server_switching_confirm":"サーバーの切り替えを確認する",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"最新バージョンを発見する",
 "app.system.version.download_failed":"更新プログラムをダウンロードできなかった"
 }
+

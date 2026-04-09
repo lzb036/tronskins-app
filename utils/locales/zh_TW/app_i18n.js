@@ -219,6 +219,7 @@ export default {
 "app.user.setting.steam_management":"蒸汽管理",
 "app.user.setting.multilingual":"多語言",
 "app.user.setting.server":"服務器",
+"app.user.setting.auth_test_center":"認證測試中心",
 "app.user.setting.server_add":"已添加新服務器",
 "app.user.setting.server_ip_placeholder":"請輸入IP地址。",
 "app.user.setting.server_switching_confirm":"確認服務器切換到",
@@ -484,3 +485,4 @@ export default {
 "app.system.version.latest_discover":"發現最新版本",
 "app.system.version.download_failed":"下載更新包失敗"
 }
+

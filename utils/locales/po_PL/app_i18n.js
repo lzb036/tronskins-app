@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"Zarządzanie Steam",
 "app.user.setting.multilingual":"Wielojęzyczne",
 "app.user.setting.server":"Serwer",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"Dodany nowy serwer",
 "app.user.setting.server_ip_placeholder":"Proszę wpisać adres IP.",
 "app.user.setting.server_switching_confirm":"Potwierdź przełączenie serwera na",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"Odkryj najnowszą wersję",
 "app.system.version.download_failed":"Nie można pobrać pakietu aktualizacji"
 }
+

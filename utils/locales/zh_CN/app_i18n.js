@@ -226,6 +226,7 @@ export default {
 "app.user.setting.steam_management":"Steam管理",
 "app.user.setting.multilingual":"多语言",
 "app.user.setting.server":"服务器",
+"app.user.setting.auth_test_center":"认证测试中心",
 "app.user.setting.server_add":"新增服务器",
 "app.user.setting.server_ip_placeholder":"请输入IP地址",
 "app.user.setting.server_switching_confirm":"确认切换服务器至",
@@ -518,3 +519,4 @@ export default {
 "app.system.version.latest_discover":"发现最新版本",
 "app.system.version.download_failed":"更新包下载失败"
 }
+

@@ -295,9 +295,9 @@ export default {
 
 			try {
 				const response = await LoginUserApi(requestParams);
+					console.log(response)
 				if (response.code === 0) {
 					const data = response.datas;
-					console.log(data)
 					if(data.verifyType == 0){
 						await setAccessToken({
 							accessToken: data.accessToken || data.token,

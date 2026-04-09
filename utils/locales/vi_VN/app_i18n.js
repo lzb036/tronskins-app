@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"Quản lý Steam",
 "app.user.setting.multilingual":"Đa ngôn ngữ",
 "app.user.setting.server":"Máy chủ",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"Máy chủ mới được thêm",
 "app.user.setting.server_ip_placeholder":"Vui lòng nhập địa chỉ IP.",
 "app.user.setting.server_switching_confirm":"Xác nhận chuyển đổi của máy chủ đến",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"Khám phá phiên bản mới nhất",
 "app.system.version.download_failed":"Không thể tải xuống gói cập nhật"
 }
+

@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"Manajemen Uap",
 "app.user.setting.multilingual":"Multibahasa",
 "app.user.setting.server":"Server",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"Server Baru Ditambahkan",
 "app.user.setting.server_ip_placeholder":"Silakan masukkan alamat IP.",
 "app.user.setting.server_switching_confirm":"Konfirmasikan pergeseran server ke",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"Temukan versi terbaru",
 "app.system.version.download_failed":"Gagal mengunduh paket pembaruan"
 }
+

@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"การจัดการไอน้ำ",
 "app.user.setting.multilingual":"หลายภาษา",
 "app.user.setting.server":"เซอร์เวอร์",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"เพิ่มเซิร์ฟเวอร์ใหม่",
 "app.user.setting.server_ip_placeholder":"กรุณาป้อนที่อยู่ IP",
 "app.user.setting.server_switching_confirm":"ยืนยันการสวิตช์ของเซิร์ฟเวอร์ไปยัง",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"ค้นพบรุ่นล่าสุด",
 "app.system.version.download_failed":"ล้มเหลวในการดาวน์โหลดแพคเกจการปรับปรุง"
 }
+

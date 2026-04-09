@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"Управление паром",
 "app.user.setting.multilingual":"Многоязычные",
 "app.user.setting.server":"Сервер",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"Добавлен новый сервер",
 "app.user.setting.server_ip_placeholder":"Пожалуйста, введите IP-адрес.",
 "app.user.setting.server_switching_confirm":"Подтвердите переключение сервера на",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"Открыть последнюю версию",
 "app.system.version.download_failed":"Не удалось загрузить пакет обновлений"
 }
+

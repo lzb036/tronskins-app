@@ -7,7 +7,7 @@ import {
  * 账号登录 ： verifyType：0 不验证，1 邮箱验证，2 2fa验证
  */
 export const LoginUserApi = (data) => {
-	return post('api/app/auth', data, {
+	return post('api/app/auth/login', data, {
 		autoToken: false,
 		skipAuthRefresh: true,
 		withCredentials: true

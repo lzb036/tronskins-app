@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"Buhar Yönetimi",
 "app.user.setting.multilingual":"Çok Dilli",
 "app.user.setting.server":"Sunucu",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"Yeni Sunucu Eklendi",
 "app.user.setting.server_ip_placeholder":"Lütfen IP adresini girin.",
 "app.user.setting.server_switching_confirm":"Sunucunun anahtarını onaylayın",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"En son sürümünü keşfedin",
 "app.system.version.download_failed":"Güncelleme paketini indiremedi"
 }
+

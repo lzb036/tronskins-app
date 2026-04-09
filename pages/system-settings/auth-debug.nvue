@@ -1,6 +1,6 @@
 <template>
 	<view class="debug-page">
-		<u-navbar title="认证调试" :autoBack="true" fixed safeAreaInsetTop></u-navbar>
+		<u-navbar title="认证测试中心" :autoBack="true" fixed safeAreaInsetTop></u-navbar>
 		<view :style="{ height: statusBarHeight + 44 + 'px' }"></view>
 
 		<scroller class="debug-scroll">
@@ -191,7 +191,7 @@ export default {
 	mounted() {
 		this.refreshSnapshot()
 		this.startTickTimer()
-		this.appendLog('info', '认证调试页已就绪')
+		this.appendLog('info', '认证测试中心已就绪')
 	},
 	beforeDestroy() {
 		this.stopTickTimer()

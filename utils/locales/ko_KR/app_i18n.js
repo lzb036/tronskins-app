@@ -218,6 +218,7 @@ export default {
 "app.user.setting.steam_management":"스팀 관리",
 "app.user.setting.multilingual":"다국어",
 "app.user.setting.server":"서버",
+"app.user.setting.auth_test_center":"Auth Test Center",
 "app.user.setting.server_add":"새로운 서버 추가",
 "app.user.setting.server_ip_placeholder":"IP 주소를 입력하십시오.",
 "app.user.setting.server_switching_confirm":"서버의 전환을 확인",
@@ -483,3 +484,4 @@ export default {
 "app.system.version.latest_discover":"최신 버전을 발견",
 "app.system.version.download_failed":"업데이트 패키지 다운로드 실패"
 }
+
